@@ -1,5 +1,5 @@
 '''
-Contains the code for fuzzy logic and math.
+Contains the code for fuzzy logic and math. testing
 '''
 
 # I had thought to include a type for fuzzy units ("fits"), reals gauranteed to be on [0,1], but
