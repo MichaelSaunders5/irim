@@ -5,137 +5,367 @@ Contains the code for fuzzy logic and math.
 import math
 from abc import ABC, abstractmethod
 
+import numpy
 import numpy as np
 
 
 # I had thought to include a type for fuzzy units ("fits"), reals guaranteed to be on [0,1], but
 # that would seem to violate the spirit of weak typing, and might slow things down with fuzzy checks all the time.
 
-# here are the functions for fuzzy logic: clip, not, and/or:
+# here are the functions for fuzzy logic: clip, and the Norm class, which provides not/and/or and and/or integrals.:
 
-def f_clip(s: float) -> float:
+def clip(s: float) -> float:
     """Clips a number to the range [0,1], ensuring that it's a fuzzy unit."""
-    if s > 1:
-        print(f"{s} out of fit bounds, clipped to 1")
-        return 1
-    elif s > 0:
-        print(f"{s} out of fit bounds, clipped to 0")
-        return s
-    else:
-        return 0
+    c = max(min(s, 1), 0)
+    if c != s:
+        # raise Exception("Fuzzy units (fits) must be on [0,1].")  # TODO: type of exception? Does it stop execution?
+        print("Fuzzy units (fits) must be on [0,1].")  # TODO: type of exception? Should it stop execution?
+    return c
 
 
-def f_not(s):
-    """The standard fuzzy negation.
+class NormBase(ABC):
+    """Norms, created by this abstract factory, define and provide the fuzzy logic operators."""
 
-    I don't anticipate using others, so this gives us a one-to-one relation between t-norms and co-norms
-    through DeMorgan's law."""
-    return 1 - s
+    def not_(self, s: float) -> float:
+        """The standard fuzzy negation."""
+        # I don't anticipate using others:
+        # this implies a one-to-one relation between t-norms and co-norms through DeMorgan's law.
+        return 1 - s
+
+    @abstractmethod
+    def and_(self, a: float, b: float) -> float:
+        """Subclasses must define the fuzzy logic and here."""
+
+    @abstractmethod
+    def or_(self, a: float, b: float) -> float:
+        """Subclasses must define the fuzzy logic or here."""
+
+    # Here I'll define And and Or integrals (like and-ing or or-ing every point of a function together).
+    # I only need the or_integral for fuzzy arithmetic, but I'm defining the and_integral for completeness.
+    # many of these implementations will require:
+    #     s = numpy.trapz(z) / line_length                          # definite line integral
+    #     p = math.exp(numpy.trapz(numpy.log(z))) / line_length     # definite geometric (product) line integral
+    # ---the definite (Riemann, geometric) integrals over some line on a function
+    # (fuzzy _and_ (t-norm), in practice) of the Cartesian product of two fuzzy values.
+    # They must always be divided by their line_length so they have the same metric (this is not true
+    # for min/max operators, because extrema aren't diminished by rarity).  For the same reason,
+    # the units of line_length should always be the sample interval on either edge of the Cartesian product.
+
+    @abstractmethod
+    def and_integral(self, z: numpy.ndarray, line_length: float) -> float:
+        """Subclasses must define the fuzzy logic and integral here.
+        Args:
+            z = an array of suitabilites (on [0,1]) vs. uniformly-spaced values
+            line_length = arclength of the line over which the definite integral is to be taken,
+                in units of sample intervals of the Cartesian product."""
+
+    @abstractmethod
+    def or_integral(self, z: numpy.ndarray, line_length: float) -> float:
+        """Subclasses must define the fuzzy logic or integral here.
+        Args:
+            z = an array of suitabilites (on [0,1]) vs. uniformly-spaced values
+            line_length = arclength of the line over which the definite integral is to be taken,
+                in units of sample intervals of the Cartesian product."""
 
 
-# <editor-fold desc="t-norm/co-norm definitions">
-FUZZY_ANDS = dict[  # This defines t-norms for fuzzy logical AND operations, from least to most strict:
-             "mm": lambda a, b: min(a, b),  # minimum / maximum (Gödel)
-             "he": lambda a, b: 0 if a == b == 0 else a * b / (a + b - a * b),  # Hamacher product / Einstein sum
-             "pp": lambda a, b: a * b,  # product / probabilistic sum (Goguen)
-             "lb": lambda a, b: max(0, a + b - 1),  # Łukasiewicz  / bounded sum
-             "nn": lambda a, b: min(a, b) if a + b > 1 else 0,  # nilpotent minimum (Kleene-Dienes)
-             "dd": lambda a, b: b if a == 1 else a if b == 1 else 0,  # drastic t-norm
-             # parameterized t-norms:
-             # Names of parameterized norms should be two letters + "p".
-             # Names of their mapping from [0,100] to whatever should be this + "p" again.
-             "hep": lambda a, b, p: 0 if p == a == b == 0 else a * b / (p + (1 - p) * (a + b - a * b)),
-             # parameterized Hamacher: p>=0 !!! p: 0(0)=Hamacher, 50(1)=product, 100(+inf)=drastic
-             "hepp": lambda p: 0 if p < 0 else 10 ** (.18 * p - 9)  # parameter mapping for "hep"="hep"+"p"
-             # Names of parameterized norms should be two letters + "p".
-             # Names of their mapping from [0,100] to whatever should be this + "p" again.
-             ]
+class Norm:
+    """A factory to create NormBases (Norms)"""
 
-FUZZY_ORS = dict[  # This defines co-norms for fuzzy logical OR operations, from least to most strict:
-            "mm": lambda a, b: max(a, b),  # maximum / minimum  (Gödel)
-            "he": lambda a, b: (a + b) / (1 + a * b),  # Einstein sum / Hamacher product
-            "pp": lambda a, b: a + b - a * b,  # probabilistic sum / product  (Goguen)
-            "lb": lambda a, b: min(a + b, 1),  # bounded sum / Łukasiewicz
-            "nn": lambda a, b: max(a, b) if a + b < 1 else 1,  # nilpotent maximum (Kleene-Dienes)
-            "dd": lambda a, b: b if a == 0 else a if b == 0 else 1,  # drastic co-norm
-            # parameterized co-norms:
-            # Names of parameterized norms should be two letters + "p".
-            # Names of their mapping from [0,100] to whatever should be this + "p" again.
-            "hep": lambda a, b, p: (a + b - p * a * b) / (1 + (1 - p) * a * b),
-            # parameterized Hamacher: p>=0 !!! p: 0(0)=Hamacher, 50(1)=product, 100(+inf)=drastic
-            "hepp": lambda p: 0 if p < 0 else 10 ** (.18 * p - 9)  # parameter mapping for "hep"="hep"+"p"
-            ]
+    def __new__(cls, **kwargs):
+        """Parse the kwargs and return a subclass of NormBase.
+        If kwargs ==
+            None:       pp
+            n=a norm key: a simple norm of that kind
+            n1, n2==norm keys, weight==[0,100]: a compound norm
+            strictness==[-100,100]: a strictness norm
+        the norm keys are---simple from least to most strict:
+            'lx': Lax(),
+            'mm': MinMax(),
+            'he': HamacherEinstein(),
+            'pp': ProductProbabilisticSum,
+            'lb': LukasiewiczBoundedSum,
+            'nn': Nilpotent(),
+            'dd': Drastic(),
+        and my one parameterized norm so far:
+            'hep': ParameterizedHamacherEinstein
 
-
-# </editor-fold>
-
-
-# I would provide more t-norms (Schweizer, Frank, Yager, Aczél–Alsina, Dombi, Sugeno–Weber, etc.),
-# but I don't know how to interpret them continuously (which is necessary for the fuzzy arithmetic)---
-# I only know how to do Riemann and geometric (product) integrals.
-
-def f_op(andor: str, a: float, b: float, norm_1="pp", norm_2=None, w=50.0) -> float:
-    """Performs fuzzy logic AND or OR operation on a pair of fits, returning a fit.
-
-    andor: "and"|"or" chooses which type of operator
-    a, b: fits (floats assumed to be on [0,1]
-    The next three parameters choose the t-norm or co-norm that defines the operator.
-    norm_1, norm_2: can be called in three ways:
-    * as "None" (see below)
-    * as a two-letter string indicating a norm (they come in t-norm/co-norm pairs intended to be used together).
-    * as a tuple: (a three-letter string indicating a parameterized norm, a parameter for it on [0,100]).
-    If norm_1 is None: w is a parameter on [0,100] indicating the strictness (extremeness) of the operation.
-        So, a larger number makes AND more likely to be False and OR more likely to be True. (See chart below)
-    If norm_1 is defined, but norm_2 is None:  only norm_1 is used.
-    If both norms are defined: their average, weighted by w (0=norm_1, 100=norm_2).
-    w: a parameter on [0,100]
-        if norm_2 is defined: the percent weight combining the results of norm_1 and norm_2.
-        if norm_1 is None: the result is a "crossfade" as in the following chart:
-
-    The provided norm pairs are (in increasing strictness with their number if "crossfade" is used:
-          0  mm  minimum / maximum (Gödel, Zadeh)
-         25  he  Hamacher product / Einstein sum
-         50  pp  product / probabilistic sum (Goguen) (This is always the default!)
-         75  lb  Łukasiewicz  / bounded sum
-         90  nn  nilpotent minimum / maximum (Kleene-Dienes)
-        100  dd  drastic t-norm / co-norm
-             hep the parameterized versions of Hamacher product / Einstein sum: 0=he, 50=pp, 100=dd
-"""
-
-    op = (FUZZY_ANDS if andor[0] == "a" or "A" else FUZZY_ORS)  # if it isn't an AND, it's an OR
-
-    if norm_1 is None:  # Do a "crossfade" norm parameterized by w: mm=0, he=25, pp=50, lb=75, nn=90, dd=100.
-        if w < 25:
-            w = w / 25
-            return (1 - w) * op["mm"](a, b) + w * op["he"](a, b)
-        elif w < 50:
-            w = (w - 25) / 25
-            return (1 - w) * op["he"](a, b) + w * op["ww"](a, b)
-        elif w < 75:
-            w = (w - 50) / 25
-            return (1 - w) * op["ww"](a, b) + w * op["lb"](a, b)
-        elif w < 90:
-            w = (w - 75) / 15
-            return (1 - w) * op["lb"](a, b) + w * op["nn"](a, b)
+        """
+        if kwargs is None:
+            n = ProductProbabilisticSum()
+        elif "norm" in kwargs:
+            n = NORMS.get(kwargs.get("norm"))
+            if  "p" in kwargs and kwargs.get("n")[2]=="p":
+                n = n(kwargs.get("p"))
+        elif "strictness" in kwargs:
+            n = StrictnessNorm(kwargs.get("strictness"))
+        elif "n1" in kwargs and "n2" in kwargs and "weight" in kwargs:
+            n1 = NORMS.get(kwargs.get("n1"))
+            n2 = NORMS.get(kwargs.get("n2"))
+            w = kwargs.get("weight")
+            n = CompoundNorm(n1,n2,w)
         else:
-            w = (w - 90) / 10
-            return (1 - w) * op["nn"](a, b) + w * op["dd"](a, b)
-    else:
-        if isinstance(norm_1, str):  # Perform the simple norm.
-            result_1 = op[norm_1](a, b)
-        else:  # It's a tuple.  Perform the parameterized norm
-            p = op[norm_1[0] + "p"](norm_1[1])  # Map the norm parameter from [0,100] to whatever the norm wants.
-            result_1 = op[norm_1[0]](a, b, p)
+            n = ProductProbabilisticSum()
+        print(n)
+        return n
 
-    if norm_2 is None:
-        return result_1
-    else:
-        if isinstance(norm_2, str):  # Perform the simple norm.
-            result_2 = op[norm_2](a, b)
-        else:  # It's a tuple.  Perform the parameterized norm
-            p = op[norm_2[0] + "p"](norm_2[1])  # map the norm parameter from [0,100] to whatever the norm wants
-            result_2 = op[norm_2[0]](a, b, p)
-        return ((100 - w) * result_1 + w * result_2) / 100
+
+        # TODO: create versions that add this if kwargs["clipping"] right?:
+        # s = clip(s) if self.clipping else s
+        # if self.clipping:
+        #     a = clip(a)
+        #     b = clip(b)
+        # numpy.ndarry:  normalize to [0,1] or! numpy.clip(v, 0, 1)
+
+
+
+
+class SimpleNorm(NormBase):
+    """These are created without arguments."""
+
+
+# Here I'll implement the SimpleNorms from least to most strict (strong and, weak or to the reverse):
+#   I would provide more t-norms (Schweizer, Frank, Yager, Aczél–Alsina, Dombi, Sugeno–Weber, etc.),
+#   but I don't know how to interpret them continuously (which is necessary for the fuzzy arithmetic)---
+#   I only know how to do Riemann and geometric (product) integrals.  That should be plenty!
+
+
+class Lax(SimpleNorm):
+    """(lx) Defines the lax t-norm/co-norm pair
+        (my own invention, the opposite of drastic, fodder for CompoundNorms)."""
+
+    def and_(self, a: float, b: float) -> float:
+        return 0 if a == b == 0 else 1
+
+    def or_(self, a: float, b: float) -> float:
+        return 1 if a == b == 1 else 0
+
+    def and_integral(self, z: numpy.ndarray, line_length: float) -> float:
+        return 0 if numpy.amax(z) == 0 else 1
+
+    def or_integral(self, z: numpy.ndarray, line_length: float) -> float:
+        return 1 if numpy.amin(z) == 1 else 0
+
+
+class MinMax(SimpleNorm):
+    """(mm) Defines the Gödel-Zadeh (minimum / maximum) t-norm/co-norm pair."""
+
+    def and_(self, a: float, b: float) -> float:
+        return min(a, b)
+
+    def or_(self, a: float, b: float) -> float:
+        return max(a, b)
+
+    def and_integral(self, z: numpy.ndarray, line_length: float) -> float:
+        return numpy.amin(z)
+
+    def or_integral(self, z: numpy.ndarray, line_length: float) -> float:
+        return numpy.amax(z)
+
+
+class HamacherEinstein(SimpleNorm):
+    """(he) Defines the Hamacher product / Einstein sum t-norm/co-norm pair."""
+
+    def and_(self, a: float, b: float) -> float:
+        return 0 if a == b == 0 else a * b / (a + b - a * b)  # Could get +inf near a==b==0?
+
+    def or_(self, a: float, b: float) -> float:
+        return (a + b) / (1 + a * b)
+
+    def and_integral(self, z: numpy.ndarray, line_length: float) -> float:
+        s = numpy.trapz(z) / line_length
+        p = math.exp(numpy.trapz(numpy.log(z))) / line_length
+        return 0 if s == p else (p / (s - p))
+
+    def or_integral(self, z: numpy.ndarray, line_length: float) -> float:
+        s = numpy.trapz(z) / line_length
+        p = math.exp(numpy.trapz(numpy.log(z))) / line_length
+        return s / (1 + p)
+
+
+class ProductProbabilisticSum(SimpleNorm):
+    """(pp) Defines the Goguen (product / probabilistic sum) t-norm/co-norm pair."""
+
+    def and_(self, a: float, b: float) -> float:
+        return a * b
+
+    def or_(self, a: float, b: float) -> float:
+        return a + b - a * b
+
+    def and_integral(self, z: numpy.ndarray, line_length: float) -> float:
+        s = numpy.trapz(z)  # definite integral
+        p = math.exp(numpy.trapz(numpy.log(z)))  # definite geometric (product) integral
+        return p / line_length
+
+    def or_integral(self, z: numpy.ndarray, line_length: float) -> float:
+        s = numpy.trapz(z)
+        p = math.exp(numpy.trapz(numpy.log(z)))
+        return (s - p) / line_length
+
+
+class LukasiewiczBoundedSum(SimpleNorm):
+    """(lb) Defines the Łukasiewicz / bounded sum t-norm/co-norm pair."""
+
+    def and_(self, a: float, b: float) -> float:
+        return max(0.0, a + b - 1)
+
+    def or_(self, a: float, b: float) -> float:
+        return min(a + b, 1)
+
+    def and_integral(self, z: numpy.ndarray, line_length: float) -> float:
+        s = numpy.trapz(z) / line_length
+        return max(0, s - 1)
+
+    def or_integral(self, z: numpy.ndarray, line_length: float) -> float:
+        s = numpy.trapz(z) / line_length
+        return min(s, 1)
+
+
+class Nilpotent(SimpleNorm):
+    """(nn) Defines the Kleene-Dienes (nilpotent minimum / maximum) t-norm/co-norm pair."""
+
+    def and_(self, a: float, b: float) -> float:
+        return min(a, b) if a + b > 1 else 0
+
+    def or_(self, a: float, b: float) -> float:
+        return max(a, b) if a + b < 1 else 1
+
+    def and_integral(self, z: numpy.ndarray, line_length: float) -> float:
+        s = numpy.trapz(z) / line_length
+        return numpy.amin(z) if s > 1 else 0
+
+    def or_integral(self, z: numpy.ndarray, line_length: float) -> float:
+        s = numpy.trapz(z) / line_length
+        return numpy.amax(z) if s < 1 else 1
+
+
+class Drastic(SimpleNorm):
+    """(dd) Defines the drastic t-norm/co-norm pair."""
+
+    def and_(self, a: float, b: float) -> float:
+        if a == 1:
+            r = b
+        elif b == 1:
+            r = a
+        else:
+            r = 0
+        return r
+
+    def or_(self, a: float, b: float) -> float:
+        if a == 0:
+            r = b
+        elif b == 0:
+            r = a
+        else:
+            r = 1
+        return r
+
+    def and_integral(self, z: numpy.ndarray, line_length: float) -> float:
+        return numpy.amin(z) if numpy.amax(z) == 1 else 0
+
+    def or_integral(self, z: numpy.ndarray, line_length: float) -> float:
+        return numpy.amax(z) if numpy.amin(z) == 0 else 1
+
+
+class ParameterizedNorm(SimpleNorm):
+    """The __init__ method of its subclasses should take user parameter(s) on [0,100] or [-100,100]
+    and map them onto whatever their t-norms/co-norms require."""
+
+
+class ParameterizedHamacherEinstein(ParameterizedNorm):
+    """(hep) Defines the parameterized version of the Hamacher product / Einstein sum t-norm/co-norm pair.
+
+    The user parameter is expected to be on [0,100] and must be >=0 (it will be clipped if it is not).
+        p ==   0 == Hamacher / Einsten sum (he),
+        p ==  50 == product / bounded sum (pp),
+        p == 100 == drastic (dd).
+    """
+
+    def __init__(self, user_parameter=0):
+        user_parameter = max(user_parameter, 0)
+        self._p = 0 if user_parameter < 0 else 10 ** (.18 * user_parameter - 9)
+
+    def and_(self, a: float, b: float) -> float:
+        return 0 if self._p == a == b == 0 else a * b / (self._p + (1 - self._p) * (a + b - a * b))
+
+    def or_(self, a: float, b: float) -> float:
+        return (a + b - self._p * a * b) / (1 + (1 - self._p) * a * b)
+
+    def and_integral(self, z: numpy.ndarray, line_length: float) -> float:
+        s = numpy.trapz(z) / line_length
+        p = math.exp(numpy.trapz(numpy.log(z))) / line_length
+        return 0 if self._p == s == 0 else p / (self._p + (1 - self._p) * (s - p))
+
+    def or_integral(self, z: numpy.ndarray, line_length: float) -> float:
+        s = numpy.trapz(z) / line_length
+        p = math.exp(numpy.trapz(numpy.log(z))) / line_length
+        return (s - self._p * p) / (1 + (1 - self._p) * p)
+
+
+class CompoundNorm(NormBase):
+    """Returns a linear combination of the results of two other norms according to a weight on [0,100].
+
+    Args:
+        n1, n2: two SimpleNorms
+        w: a parameter on [0,100].  If the strictness of n2>n1, the w may be taken as a strictness parameter."""
+
+    def __init__(self, n1: SimpleNorm, n2: SimpleNorm, w: float):
+        self._n1 = n1
+        self._n2 = n2
+        self._w = w
+
+    def combination(self, r1: float, r2: float) -> float:
+        return ((100 - self._w) * r1 + self._w * r2) / 100
+
+    def and_(self, a: float, b: float) -> float:
+        return self.combination(self._n1.and_(a, b), self._n2.and_(a, b))
+
+    def or_(self, a: float, b: float) -> float:
+        return self.combination(self._n1.or_(a, b), self._n2.or_(a, b))
+
+    def and_integral(self, z: numpy.ndarray, line_length: float) -> float:
+        return self.combination(self._n1.and_integral(z, line_length), self._n2.and_integral(z, line_length))
+
+    def or_integral(self, z: numpy.ndarray, line_length: float) -> float:
+        return self.combination(self._n1.or_integral(z, line_length), self._n2.or_integral(z, line_length))
+
+
+class StrictnessNorm(NormBase):
+    """Provides a norm of a given strictness, on a scale from [-100,100].
+
+        The provided norm pairs are, in increasing strictness:
+        -100 lx  lax
+        -90  mm  minimum / maximum (Gödel, Zadeh)
+        -50  he  Hamacher product / Einstein sum
+          0  pp  product / probabilistic sum (Goguen) (This is always the default!)
+         50  lb  Łukasiewicz  / bounded sum
+         90  nn  nilpotent minimum / maximum (Kleene-Dienes)
+        100  dd  drastic t-norm / co-norm"""
+
+    def __new__(cls, strictness: float):
+        strictness = max(min(strictness, 100), -100)
+        if strictness < -90:
+            n = CompoundNorm(Lax(), MinMax(), (strictness + 100) * 10)
+        elif strictness < -50:
+            n = CompoundNorm(MinMax(), HamacherEinstein(), (strictness + 90) * 2.5)
+        elif strictness < 0:
+            n = CompoundNorm(HamacherEinstein(), ProductProbabilisticSum(), (strictness + 50) * 2)
+        elif strictness < 50:
+            n = CompoundNorm(ProductProbabilisticSum(), LukasiewiczBoundedSum(), strictness * 2)
+        elif strictness < 90:
+            n = CompoundNorm(LukasiewiczBoundedSum(), Nilpotent(), (strictness - 50) * 2.5)
+        else:
+            n = CompoundNorm(Nilpotent(), Drastic(), (strictness - 90) * 10)
+        return n
+
+
+NORMS = {'lx': Lax(),
+         'mm': MinMax(),
+         'he': HamacherEinstein(),
+         'pp': ProductProbabilisticSum,
+         'lb': LukasiewiczBoundedSum,
+         'nn': Nilpotent(),
+         'dd': Drastic(),
+         'hep': ParameterizedHamacherEinstein()}
 
 
 # here are the classes for fuzzy value and arithmetic:
@@ -148,11 +378,19 @@ class Value(ABC):
     """Represents a generally fuzzy real number (as a function of suitability (on [0,1]) vs. value).
     It may be obtained (defuzzified) as a crisp value, along with that value's suitability.
     """
+    continuous_domain = None
 
     @property
-    @abstractmethod
     def continuous_domain(self):
-        pass
+        return self._continuous_domain
+
+    @continuous_domain.setter
+    def continuous_domain(self, x):
+        self._continuous_domain = x
+
+    #
+    # def __init__(self, continuous_domain):
+    #     self.continuous_domain = continuous_domain
 
     @abstractmethod
     def evaluate(self, resolution: float):  # -> Numerical
@@ -208,7 +446,7 @@ class Numerical(Value):
             domain: values over which the continuous domain will be defined.
             resolution: the separation between sample points (a smaller resolution is better).
         """
-        self._continuous_domain = domain
+        self.continuous_domain = domain
         v_0 = math.floor(domain[0] / resolution) - 1
         v_n = math.ceil(domain[1] / resolution) + 1
         number_of_samples = v_n - v_0 + 1
@@ -230,7 +468,7 @@ class Numerical(Value):
         if discrete is not None:
             return discrete
         else:
-            if value < self._continuous_domain[0] or value > self._continuous_domain[1]:
+            if value < self.continuous_domain[0] or value > self.continuous_domain[1]:
                 return self.out_of_bounds
             else:
                 return np.interp(value, self.continuous_v, self.continuous_s)
@@ -262,7 +500,7 @@ class Numerical(Value):
 class Triangle(Value):
     """Describes a fuzzy number as a trianglular function with a peak (maximum s) and extreme limits (s==0)"""
 
-    def __init__(self, peak, domain: (float, float)):
+    def __init__(self, peak, domain):
         """Args:
             peak:
                 float: (most suitable) value , assumes s=1
@@ -270,18 +508,38 @@ class Triangle(Value):
             domain:
                 float:  HWHM
                 (float, float): extreme domain where s>0"""
-        if peak.isFloat:  # assume its suitability = 1
+
+        if isinstance(peak, (float, int)):  # assume its suitability = 1
             self.peak = (peak, 1.0)
         else:
             self.peak = peak
-        if domain.isFloat:  # assume it is the HWFM about the peak
-            self._continuous_domain = (peak[0] - 2 * domain, peak[0] + 2 * domain)
+        if isinstance(domain, (float, int)):  # assume it is the HWFM about the peak
+            self.continuous_domain = (self.peak[0] - domain, self.peak[0] + domain)
         else:
-            self._continuous_domain = domain  # shouldn't I check these things?
+            self.continuous_domain = domain  # shouldn't I check these things?
 
-    def evaluate(self, resolution: float):
-        n = Numerical(self.continuous_domain,resolution)
-        a = self.peak[1] / (self.continuous_domain[1] - self.peak[0])
-        n.continuous_s = f_clip(a * (n.continuous_v - self.peak[0]))
+    def evaluate(self, resolution: float):  # rethink this
+        n = Numerical(self.continuous_domain, resolution)
+        a_left = self.peak[1] / (self.peak[0] - self.continuous_domain[0])
+        a_right = self.peak[1] / (self.peak[0] - self.continuous_domain[1])
+        d = n.continuous_v  # - self.peak[0]
+
+        s = n.continuous_s
+        s = np.piecewise(d, [d < self.continuous_domain[0],
+                             (d > self.continuous_domain[0]) and (d < self.peak[0]),
+                             (d >= self.peak[0]) and (d < self.continuous_domain[1]),
+                             d > self.continuous_domain[1]],
+                         [lambda d: 0, lambda d: 1, lambda d: 2, lambda d: 3])
+        print(d)
+        # n.continuous_s =[lambda d: 0, lambda d: a_left*d, lambda d: 1-a_right*d, lambda d: 0]
+        print(s)
         return n
 
+
+# Here is where I am testing or playing around or something.
+
+n = Norm(norm="pp")
+print(type(n))
+print(n.not_(.1))
+print(n.and_(.5,.5))
+print(n.or_(.5,.5))
