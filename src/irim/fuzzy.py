@@ -14,16 +14,16 @@ Truth
     from perfect falsehood (0), to absolute truth (1) or anything in-between.  It may be used to describe
     the truth of a proposition, the strength of an opinion, the certainty of a fact, the preference for a choice,
     or any other measured quantity of physical or mental reality that might vary between established limits.
-    The class includes many overloaded operators:
+    The class provides many methods and overloaded operators for working with logic:
 
-        * The 3 basic logical operators: *and* (&), *or* (|), and *not* (~).
-        * The other 14 binary logical connectives familiar from propositional calculus and electronic logic gates.
+        * The 3 basic logical operators: *and* (`&`), *or* (`|`), and *not* (`~`).
+        * The other 8 non-trivial logical connectives familiar from propositional calculus and electronic logic
+          gates:  *implies* (`>>`), *converse* (`<<`), equivalence ("if and only if"), exclusive or; and the
+          inverses: *nand*, *nor*, *nimp*, and *ncon*.
         * The 6 comparisons: <,>,<=,>=,==,!=.
-        * Setting by a `float` via clipping to ensure validity.
-        * Conversion to a `bool`, i.e., from *fuzzy* to *crisp* ("defuzzification"), by comparison to a threshold
-          (e.g., the global default is .5).  (But consider simply using `Truth` in its fuzzy form, as a `float`,
-          in order to take advantage of its nuance, i.e., you might map it to some practical unit.)
-
+        * A method to ensure validity by clipping to the range [0,1].
+        * In order to make final decisions, "defuzzification" from *fuzzy* `Truth` to *crisp* `bool`, by comparison
+          to a threshold.  (But consider the utility of simply using `Truth` in its nuanced, fuzzy form.)
 Value
     The :class:`fuzzy.Value` class applies this idea to the representation of numbers.  A :class:`Value` object is a
     function of truth vs. value.  We may think of the function as describing the suitability of the value for some
@@ -661,7 +661,7 @@ class Truth(float):
     * The basic `and_` (`&`), `or_` (`|`), and `not_` (`~`), as defined by a :class:`Norm`.  (The underscores
         are necessary difference Python keywords.)
     * The other 8 significant binary truth tables built from them, named as in logic gates or propositional logic:
-        * `imp` (`>>`), `con` (`<<`), `iff` (`-`), `xor` (`+`)
+        * `imp` (`>>`), `con` (`<<`), `iff`, `xor`
         * and the negations: `nand`, `nor`, `nimp`, `ncon`
     * Comparisons: `<`, `>`, `<=`, `>=`, `==`, `!=`.
     * Conversions:
@@ -672,6 +672,10 @@ class Truth(float):
 
     Arithmetic operators don't make sense within the class, but consider:  the solution to your problem mightn't be
     a crisp version of the `Truth` result, but a variable mapped from such a nuanced result.
+
+
+    Attributes:
+            global_threshold (float): Probably on [0,1].  Used to `crisp` (defuzzify) a fuzzy `Truth` to a `bool`.
     """
 
     global_threshold: ClassVar[float] = .5
