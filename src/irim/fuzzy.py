@@ -4,35 +4,76 @@ All the facilities for working with fuzzy logic and math.
 Introduction
 ------------
 
-There are three main families of classes here:
+There are three main families of classes here: :class:`Norm`, :class:`Truth`, and :class:`Value`:
 
 Norm
-    Norms define the basic fuzzy operators (t-norms and co-norms).
+    Norms define the fundamental fuzzy operators (t-norms and co-norms) and perform their calculations.
     Don't worry if you aren't familiar with these terms;  the default is probably all you will ever need.
+
+    The abstract :class:`Norm` provides the operations:
+
+        * :meth:`.Norm.not_` (¬, *negation*), and
+        * :meth:`.Norm.clip`;
+
+    and guarantees the provision of:
+
+        * :meth:`.Norm.and_` (∧, *t-norm*),
+        * :meth:`.Norm.or_` (∨, *co-norm*), and their integral forms:
+        * :meth:`.Norm._and_integral`
+        * :meth:`.Norm._or_integral`,
+
+    though these are to be
+    The logic operators can operate on tuples containing any combination of
+
+
 Truth
-    A :class:`Truth` object is essentially a `float` restricted to [0,1].  It represents a *degree of truth*,
+    A :class:`Truth` object is essentially a ``float`` restricted to [0,1].  It represents a *degree of truth*,
     from perfect falsehood (0), to absolute truth (1) or anything in-between.  It may be used to describe
     the truth of a proposition, the strength of an opinion, the certainty of a fact, the preference for a choice,
     or any other measured quantity of physical or mental reality that might vary between established limits.
     The class provides many methods and overloaded operators for working with logic:
 
-        * The 3 basic logical operators: *and* (`&`), *or* (`|`), and *not* (`~`).
+        * The 3 basic logical operators:
+
+            * :meth:`.Truth.and_` (∧, ``&``),
+            * :meth:`.Truth.or_` (∨, ``|``), and
+            * :meth:`.Truth.not_` (¬, ``~``).
+
         * The other 8 non-trivial logical connectives familiar from propositional calculus and electronic logic
-          gates:  *implies* (`>>`), *converse* (`<<`), equivalence ("if and only if"), exclusive or; and the
-          inverses: *nand*, *nor*, *nimp*, and *ncon*.
-        * The 6 comparisons: <,>,<=,>=,==,!=.
-        * A method to ensure validity by clipping to the range [0,1].
-        * In order to make final decisions, "defuzzification" from *fuzzy* `Truth` to *crisp* `bool`, by comparison
-          to a threshold.  (But consider the utility of simply using `Truth` in its nuanced, fuzzy form.)
+          gates:
+
+            * :meth:`.imp` (→, "implies", ``>>``),
+            * :meth:`.con` (←, *converse*, ``<<``),
+            * :meth:`.iff` (↔, *equivalence*, "if and only if", "xnor"), its inverse
+            * :meth:`.xor` (⨁, *exclusive or*); and the other inverses:
+            * :meth:`.nand` (↑, not conjunction),
+            * :meth:`.nor` (↓, not disjunction),
+            * :meth:`.nimp` (⇸, not implication), and
+            * :meth:`.ncon` (⇷, not converse implication).
+
+        * The 6 comparisons: ``<``, ``>`` , ``<=``, ``>=``, ``==``, ``!=``.
+        * Methods:
+
+            * :meth:`.isValid` to check validity (presence on the range [0,1]), and
+            * :meth:`.clip` to ensure it by clipping.
+
+        * Methods:  :meth:`.validate` and :meth:`.scale` to translate to and from a range of real numbers,
+          linearly or logarithmically.
+        * A :meth:`.crisp` "defuzzification" method for making final decisions, i.e., for converting from a
+          *fuzzy* :class:`Truth` to a *crisp* ``bool``, by comparison to a threshold (given or by global default).
+          (Consider, though, the utility of simply using a :class:`Truth` in its nuanced, ineffably beautiful,
+          fuzzy form.)
+
 Value
-    The :class:`fuzzy.Value` class applies this idea to the representation of numbers.  A :class:`Value` object is a
-    function of truth vs. value.  We may think of the function as describing the suitability of the value for some
-    purpose.  E.g., we might describe room temperature as a symmetrical triangular function on (68, 76)°F or
-    (20, 24)°C.  In this way, we might state our opinions as "preference curves".  We might also represent empirical
-    knowledge as fuzzy numbers.  E.g., sensory dissonance vs. interval is a highly structured function with many peaks
-    and valleys across a wide domain, but all of this information can be encapsulated in a single :class:`Value`.
+    The :class:`.Value` class applies the idea of fuzzy truth to the representation of numbers.  A :class:`Value`
+    object is a function of truth vs. value.  We may think of the function as describing the suitability of each
+    possible value for some purpose.  E.g., we might describe room temperature as a symmetrical triangular function
+    on (68, 76)°F or (20, 24)°C.  In this way, we might state our opinions as "preference curves".  We might also
+    represent empirical knowledge as fuzzy numbers.  E.g., sensory dissonance vs. interval is a highly structured
+    function with many peaks and valleys across a wide domain, but all of this information can be encapsulated
+    in a single :class:`Value` object.
 
-
+and...
 
 
 How to Use the Module
@@ -42,7 +83,10 @@ There are two ways to use these:
 
 * The hard way: create a Norm object and use its functions as logic and arithmetic operators.
 * The easy way: set the global Norm and Defuzzifier  (if you aren't happy with the defaults)
-    and use overloaded operators on :class:`Truth` and :class:`Value` objects.
+  and use overloaded operators on :class:`Truth` and :class:`Value` objects.
+
+The hard way
+............
 
 To use the operators you must first create a Norm object (see the factory method, :meth:`Norm.define`).
 This defines the t-norm/co-norm pair that defines logic and arithmetic operations.
@@ -61,9 +105,16 @@ Example:
 For arithmetic operators, you call it to operate on :class:`Value` objects.
 
 
+The easy way
+............
+
 
 How the Module Works
 --------------------
+
+very well?
+
+overviews of the three families ...
 
 """
 
@@ -77,11 +128,10 @@ from typing import Union, Tuple, Callable, ClassVar
 import numpy as np
 
 # is the following the right way to define types for the type hints?:
-Truth = float
-Operand = Union[float, np.ndarray, Truth]  # maybe Numeric as well?
-# Operand = float | np.ndarray  # maybe write it this way after Python 3.8?
-# Operator = Callable[[Operand, Operand], Operand]
+# Truth = float # This causes documentation problems, I've changed it to the 'Truth' form here:
+Operand = Union[float, np.ndarray, 'Truth']  #      maybe Numeric as well?
 Operator = Callable[[Operand, Operand], Operand]
+# Operand = float | np.ndarray  # maybe write it this way after Python 3.8?
 
 
 # It seems easier to make these definitions class attributes rather than module attributes:
@@ -89,20 +139,6 @@ Operator = Callable[[Operand, Operand], Operand]
 # _default_norm = Norm.define()
 # _default_crisper = Crisper()
 
-# helper classes and functions
-
-# class Infix:
-#     """Due to Ferdinand Jamitzky:  https://code.activestate.com/recipes/384122/"""
-#     def __init__(self, function):
-#         self.function = function
-#     def __mod__(self, other):
-#         return Infix(lambda x, self=self, other=other: self.function(other, x))
-#     def __rmod__(self, other):
-#         return self.function(other)
-#     def __call__(self, value1, value2):
-#         return self.function(value1, value2)
-#
-    # # nand = Infix(lambda a,b: a.nand(b))
 
 class Norm(ABC):
     """Norm objects define and provide the fuzzy logic operators.
@@ -121,11 +157,13 @@ class Norm(ABC):
     The logic operators are:
 
     * Unary:
-        * :meth:`clip_` Ensures that the input is on [0,1].
+        * :meth:`clip` Ensures that the input is on [0,1].
         * :meth:`not_` Negation (flips suitability).
+
     * Binary:
         * :meth:`and_`
         * :meth:`or_`
+
     * Continuous (Used internally for arithmetic.  They operate over the domain of a fit-valued function.):
         * :meth:`and_integral`
         * :meth:`or_integral`
@@ -137,11 +175,13 @@ class Norm(ABC):
         * :meth:`neg_`  Negative (flips sign of value).
         * :meth:`abs_`  Absolute value.
         * :meth:`inv_`  Inversion.
+
     * Binary:
         * :meth:`add_`  Addition.
         * :meth:`sub_`  Subtraction.
         * :meth:`mul_`  Multiplication.
         * :meth:`div_`  Division.
+
     """
 
     @classmethod
@@ -157,7 +197,7 @@ class Norm(ABC):
             * ``norm=`` a norm key for a parameterized norm;
               ``p=`` a (list of) parameter(s)  on [0,100] or [-100,100].
             * ``norm1, norm2=`` keys for two simple norms forming a compound by linear combination;
-              ``weight=`` [0,100], so that 0: `norm1`, 100: `norm2`.
+              ``weight=`` [0,100], so that 0: ``norm1``, 100: ``norm2``.
             * ``strictness=`` [-100,100]: a norm defined by the tendency to have
               an extreme value (for greater strictness, :meth:`and_` is more likely to be false
               and :meth:`or_` is more likely to be true).
@@ -187,7 +227,7 @@ class Norm(ABC):
         |            |            |50: product; 100: drastic                        |
         +------------+------------+-------------------------------------------------+
 
-        Returns: 
+        Returns:
             A Norm object which has methods for fuzzy logic and math operators,
             :meth:`clip_`, :meth:`not_`, :meth:`and_`, :meth:`or_`;
             :meth:`add_`, :meth:`sub_`, :meth:`mul_`, :meth:`div_`,
@@ -216,11 +256,11 @@ class Norm(ABC):
     @classmethod
     def _simple_factory(cls, norm_key: str, *args: float) -> SimpleNorm:
         """A factory for creating :class:`SimpleNorm` objects,
-        used by :class:`CompoundNorm` and :class:`StrictnessNorm`
+        used by :class:`CompoundNorm` and :class:`StrictnessNorm`.
 
         Args:
             norm_key: indicates which type to return (see :class:`Norm`).
-            *args: a tuple of parameters if a :class:`ParameterizedNorm` is indicated.
+            args: a tuple of parameters if a :class:`ParameterizedNorm` is indicated.
 
         Returns:
             A :class:`SimpleNorm` of the desired type.
@@ -253,7 +293,7 @@ class Norm(ABC):
 
         Args:
             operator: any commutative binary operator (a method defined by a subclass of :class:`Norm`).
-            operands: a list of :class:`Unit` or :class:`np.ndarray` of fits (which must all be of the same length).
+            operands: a list of :class:`Truth` or :class:`np.ndarray` of fits (which must all be of the same length).
 
         Returns:
             a single :class:`np.ndarray`, if any were input, or else a single fit."""
@@ -261,7 +301,7 @@ class Norm(ABC):
         for i in range(1, len(item)):
             item[0] = operator(item[0], item[i])
         r = item[0]
-        return Truth(r) if isinstance(r, float) else r
+        return r    # Truth(r) if isinstance(r, float) else r
 
     @staticmethod
     def clip_(s: Operand) -> Operand:
@@ -277,7 +317,7 @@ class Norm(ABC):
         # I need something here for :class:`Numerical`, right?
         # Should actual clipping raise an exception or print a warning?
         r = np.clip(s, 0, 1)
-        return Truth(r) if isinstance(r, float) else r
+        return r    # Truth(r) if isinstance(r, float) else r
 
     @staticmethod
     def not_(s: Operand) -> Operand:
@@ -289,10 +329,9 @@ class Norm(ABC):
         Returns:
             an object of the same type with all elements negated.
         """
-        # I don't anticipate using others:
+        # I don't anticipate using other negations:
         # this implies a one-to-one relation between t-norms and co-norms through DeMorgan's law.
-        r = 1 - s
-        return Truth(r) if isinstance(r, float) else r
+        return 1 - s    # Truth(r) if isinstance(r, float) else r
 
     def and_(self, *args: Operand) -> Operand:
         """Fuzzy logic AND on any combination of floats and equal-length numpy.ndarrays valued on [0,1]."""
@@ -323,18 +362,20 @@ class Norm(ABC):
 
     @abstractmethod
     def _and_integral(self, z: np.ndarray, line_length: float) -> float:
-        """Subclasses must define the fuzzy logic and integral here.
+        """A private definition of fuzzy logic AND-integral.
+
         Args:
-            z = an array of suitabilites (on [0,1]) vs. uniformly-spaced values
-            line_length = arclength of the line over which the definite integral is to be taken,
+            z: an array of suitabilites (on [0,1]) vs. uniformly-spaced values
+            line_length: arclength of the line over which the definite integral is to be taken,
                 in units of sample intervals of the Cartesian product."""
 
     @abstractmethod
     def _or_integral(self, z: np.ndarray, line_length: float) -> float:
-        """Subclasses must define the fuzzy logic or integral here.
+        """A private definition of fuzzy logic OR-integral.
+
         Args:
-            z = an array of suitabilites (on [0,1]) vs. uniformly-spaced values
-            line_length = arclength of the line over which the definite integral is to be taken,
+            z: an array of suitabilites (on [0,1]) vs. uniformly-spaced values
+            line_length: arclength of the line over which the definite integral is to be taken,
                 in units of sample intervals of the Cartesian product."""
 
 
@@ -350,8 +391,8 @@ class SimpleNorm(Norm):
 
 
 class Lax(SimpleNorm):
-    """Defines the lax (`lx`) t-norm/co-norm pair
-       (my own invention, the opposite extreme from :class:`Drastic` (`dd`), fodder for :class:`CompoundNorms`)."""
+    """Defines the lax (``lx``) t-norm/co-norm pair
+       (my own invention, the opposite extreme from :class:`Drastic` (``dd``), fodder for :class:`CompoundNorm`)."""
 
     def _and(self, a: Operand, b: Operand) -> np.ndarray:
         # equivalent:  if a == 0: r = b;  elif b == 0: r = a;  else: r = 1
@@ -373,7 +414,7 @@ class Lax(SimpleNorm):
 
 
 class MinMax(SimpleNorm):
-    """Defines the Gödel-Zadeh (minimum / maximum) (`mm`) t-norm/co-norm pair."""
+    """Defines the Gödel-Zadeh (minimum / maximum) (``mm``) t-norm/co-norm pair."""
 
     def _and(self, a: Operand, b: Operand) -> np.ndarray:
         return np.fmin(a, b)
@@ -389,7 +430,7 @@ class MinMax(SimpleNorm):
 
 
 class Hamacher(SimpleNorm):
-    """Defines the Hamacher product / sum (`hh`) t-norm/co-norm pair."""
+    """Defines the Hamacher product / sum (``hh``) t-norm/co-norm pair."""
 
     def _and(self, a: Operand, b: Operand) -> np.ndarray:
         # equivalent:  return 0 if a == b == 0 else a * b / (a + b - a * b)  # Could get +inf near a==b==0?
@@ -413,7 +454,7 @@ class Hamacher(SimpleNorm):
 
 
 class Prod(SimpleNorm):
-    """Defines the Goguen (product / probabilistic sum) (`pp`) t-norm/co-norm pair---often called simply "Prod"."""
+    """Defines the Goguen (product / probabilistic sum) (``pp``) t-norm/co-norm pair---often called simply "Prod"."""
 
     def _and(self, a: Operand, b: Operand) -> np.ndarray:
         return a * b
@@ -432,7 +473,7 @@ class Prod(SimpleNorm):
 
 
 class Einstein(SimpleNorm):
-    """Defines the Einstein product / sum (`ee`) t-norm/co-norm pair."""
+    """Defines the Einstein product / sum (``ee``) t-norm/co-norm pair."""
 
     def _and(self, a: Operand, b: Operand) -> np.ndarray:
         return a * b / (a * b - a - b + 2)
@@ -452,7 +493,7 @@ class Einstein(SimpleNorm):
 
 
 class Nilpotent(SimpleNorm):
-    """Defines the Kleene-Dienes (nilpotent minimum / maximum) (`nn`) t-norm/co-norm pair."""
+    """Defines the Kleene-Dienes (nilpotent minimum / maximum) (``nn``) t-norm/co-norm pair."""
 
     def _and(self, a: Operand, b: Operand) -> np.ndarray:
         # equivalent:  min(a, b) if a + b > 1 else 0
@@ -473,7 +514,7 @@ class Nilpotent(SimpleNorm):
 
 
 class Lukasiewicz(SimpleNorm):
-    """Defines the Łukasiewicz / bounded sum (`lb`) t-norm/co-norm pair."""
+    """Defines the Łukasiewicz / bounded sum (``lb``) t-norm/co-norm pair."""
 
     def _and(self, a: Operand, b: Operand) -> np.ndarray:
         # equivalent:  max(0.0, a + b - 1)
@@ -495,7 +536,7 @@ class Lukasiewicz(SimpleNorm):
 
 
 class Drastic(SimpleNorm):
-    """Defines the drastic (`dd`) t-norm/co-norm pair."""
+    """Defines the drastic (``dd``) t-norm/co-norm pair."""
 
     def _and(self, a: Operand, b: Operand) -> np.ndarray:
         # equivalent:  if a == 1: r = b;  elif b == 1: r = a;  else: r = 0
@@ -524,17 +565,17 @@ class ParameterizedNorm(SimpleNorm):
 class ParameterizedHamacher(ParameterizedNorm):
     """Defines the parameterized version of the Hamacher product / sum (`hhp`) t-norm/co-norm pair.
 
-    The user parameter, `p`, is expected to be on [0,100] and must be >=0 (it will be clipped if it is not).
+    The user parameter, ``p``, is expected to be on [0,100] and must be >=0 (it will be clipped if it is not).
 
-        +------+--------------------+
-        | `p=` |    equivalent norm |
-        +======+====================+
-        | 0    |    Hamacher (`he`) |
-        +------+--------------------+
-        | 50   |    product (`pp`)  |
-        +------+--------------------+
-        | 100  |    drastic (`dd`)  |
-        +------+--------------------+
+        +--------+----------------------+
+        | ``p=`` |    equivalent norm   |
+        +========+======================+
+        | 0      |    Hamacher (``he``) |
+        +--------+----------------------+
+        | 50     |    product (``pp``)  |
+        +--------+----------------------+
+        | 100    |    drastic (``dd``)  |
+        +--------+----------------------+
 
     """
 
@@ -569,8 +610,8 @@ class CompoundNorm(Norm):
 
     Args:
         n1, n2: two :class:`SimpleNorms` or their names (a 2--3 letter code).
-        w: a parameter on [0,100].  If the strictness are :math:`S(n2)>S(n1)`,
-            then w may be thought of as a strictness parameter."""
+        w: a parameter on [0,100].  If ``n2`` is stricter than ``n1``,
+           then ``w`` may be thought of as a strictness parameter."""
 
     def __init__(self, n1: SimpleNorm | str, n2: SimpleNorm | str, w: float):
         self._n1 = Norm._simple_factory(n1) if isinstance(n1, str) else n1
@@ -596,33 +637,32 @@ class CompoundNorm(Norm):
 # noinspection PyAbstractClass
 class StrictnessNorm(Norm):
     """Provides a norm of a given strictness, on a scale from [-100,100] (hard limit).
-    By "strictness", I mean the tendency to extreme values---*and* more false and *or* more true.
+    By "strictness", I mean the tendency to extreme values---**and** more false and **or** more true.
 
-        The provided norm pairs are, in increasing strictness,
-        proportional to volume of the unit cube under the curve:
+    The provided norm pairs are, in increasing strictness,
+    proportional to volume of the unit cube under the curve:
 
-        +------------+------------+---------------------------------+
-        |  strictness|    key     |name                             |
-        +============+============+=================================+
-        |     -100.00| ``'lx'``   |lax                              |
-        +------------+------------+---------------------------------+
-        |      -75.69| ``'mm'``   |minimum / maximum (Gödel, Zadeh) |
-        +------------+------------+---------------------------------+
-        |      -49.78| ``'hh'``   |Hamacher                         |
-        +------------+------------+---------------------------------+
-        |      -22.42| ``'pp'``   |product (Goguen)                 |
-        +------------+------------+---------------------------------+
-        |        5.00| ``'ee'``   |Einstein                         |
-        +------------+------------+---------------------------------+
-        |       33.20| ``'nn'``   |nilpotent (Kleene-Dienes)        |
-        +------------+------------+---------------------------------+
-        |       63.63| ``'lb'``   |Łukasiewicz                      |
-        +------------+------------+---------------------------------+
-        |      100.00| ``'dd'``   |drastic                          |
-        +------------+------------+---------------------------------+
+    +------------+------------+---------------------------------+
+    |  strictness|    key     |name                             |
+    +============+============+=================================+
+    |     -100.00| ``'lx'``   |lax                              |
+    +------------+------------+---------------------------------+
+    |      -75.69| ``'mm'``   |minimum / maximum (Gödel, Zadeh) |
+    +------------+------------+---------------------------------+
+    |      -49.78| ``'hh'``   |Hamacher                         |
+    +------------+------------+---------------------------------+
+    |      -22.42| ``'pp'``   |product (Goguen)                 |
+    +------------+------------+---------------------------------+
+    |        5.00| ``'ee'``   |Einstein                         |
+    +------------+------------+---------------------------------+
+    |       33.20| ``'nn'``   |nilpotent (Kleene-Dienes)        |
+    +------------+------------+---------------------------------+
+    |       63.63| ``'lb'``   |Łukasiewicz                      |
+    +------------+------------+---------------------------------+
+    |      100.00| ``'dd'``   |drastic                          |
+    +------------+------------+---------------------------------+
 
-
-        """
+    """
 
     def __new__(cls, strictness: float = 0):
         """Creates a :class:`CompoundNorm` to achieve the desired strictness as described in :class:`StrictnessNorm`,
@@ -646,11 +686,12 @@ global_norm = Norm.define(norm="pp")  # The default Prod t-norm is probably all 
 # Here is the class Truth, so that we can have overloaded logic operators
 
 
+
 @dataclass
 class Truth(float):
     """A "fuzzy unit" or "fit".
 
-    As binary units are *bits* with a domain of `bool` ({0,1}), fuzzy units are *fits* with a domain of [0,1]---which,
+    As binary units are *bits* with a domain of ``bool`` ({0,1}), fuzzy units are *fits* with a domain of [0,1]---which,
     by analogy, we might call "fool".  Its numerical value measures a degree of truth on the continuum between perfect
     falsehood (0) and perfect truth (1).  This might be taken as the suitability of a choice, the appropriateness
     of a value, the likelihood of a circumstance, or the strength of an opinion.  Such measures can be used to turn
@@ -658,29 +699,34 @@ class Truth(float):
 
     The operators and methods are:
 
-    * The basic `and_` (`&`), `or_` (`|`), and `not_` (`~`), as defined by a :class:`Norm`.  (The underscores
-        are necessary difference Python keywords.)
+    * The basic ``and_`` (``&``), ``or_`` (``|``), and ``not_`` (``~``), as defined by a :class:`Norm`.
+      (The underscores are necessary difference Python keywords.)
     * The other 8 significant binary truth tables built from them, named as in logic gates or propositional logic:
-        * `imp` (`>>`), `con` (`<<`), `iff`, `xor`
-        * and the negations: `nand`, `nor`, `nimp`, `ncon`
-    * Comparisons: `<`, `>`, `<=`, `>=`, `==`, `!=`.
+
+        * ``imp`` (``>>``), ``con`` (``<<``), ``iff``, ``xor``
+        * and the negations: ``nand``, ``nor``, ``nimp``, ``ncon``
+
+    * Comparisons: ``<``, ``>``, ``<=``, ``>=``, ``==``, ``!=``.
     * Conversions:
-        * to `float`, via `float()`, which is straightforward, or
-        * to `bool`, via `bool()` or `crisp(threshold)`:  defuzzification by comparison to a threshold
-        ---either given or defined as a default for the class.
-    * Ensuring the value is on the range [0,1] with `clip()`.
+
+        * to ``float``, via :meth:`float()`, which is straightforward, or
+        * to ``bool``, via :meth:`bool()` or :meth:`crisp(threshold)`:  defuzzification by comparison to a threshold
+          ---either given or defined as a default for the class.
+
+    * Ensuring the value is on the range [0,1] with :meth:`clip`.
 
     Arithmetic operators don't make sense within the class, but consider:  the solution to your problem mightn't be
-    a crisp version of the `Truth` result, but a variable mapped from such a nuanced result.
+    a crisp version of the ``Truth`` result, but a variable mapped from such a nuanced result.
 
-
-    Attributes:
-            global_threshold (float): Probably on [0,1].  Used to `crisp` (defuzzify) a fuzzy `Truth` to a `bool`.
+    Parameters:
+            global_threshold (float): Probably on [0,1].  It is used to convert a fuzzy ``Truth`` to
+            a crisp ``bool``:  A :class:`fuzzy.Truth` object will :meth:`crisp()` (defuzzify) to ``True``
+            at or above this number. It is also the default value for uninitialized ``Truth`` objects.
     """
 
     global_threshold: ClassVar[float] = .5
-    """A `fuzzy.Truth` object will crisp (defuzzify) to `True` at or above this number.  Probably on [0,1]."""
-    s: float = field(default=.5)
+    s: float = field(default=global_threshold)
+
 
     def __str__(self):
         """Just the truth value."""
@@ -694,14 +740,14 @@ class Truth(float):
         return self
 
     def crisp(self, threshold: float = None) -> bool:
-        """Decides the crisp value of a fuzzy truth on the basis of `threshold`.
+        """Decides the crisp value of a fuzzy truth on the basis of ``threshold``.
 
             Note:
-                You might consider simply using the `Truth` in its fuzzy form, as a `float`, in order to take
+                You might consider simply using the ``Truth`` in its fuzzy form, as a ``float``, in order to take
                 advantage of its nuance, i.e., by mapping it to some practical unit.
 
             Args:
-                threshold:  Presumably on [0,1].  If the `Truth` is as true as this, we can call it "true".
+                threshold:  Presumably on [0,1].  If the ``Truth`` is as true as this, we can call it "true".
 
             Returns:
                 The crisp version of a fuzzy truth, a defuzzification of its logical proposition,
@@ -714,7 +760,7 @@ class Truth(float):
             return True
 
     def __bool__(self) -> bool:
-        """Crisps the `Truth` on the basis of the class's global threshold."""
+        """Crisps the ``Truth`` on the basis of the class's global threshold."""
         return Truth.crisp(self)
 
     # Here I implement logical connectives from propositional calculus / electronic logic gates:---
@@ -724,12 +770,11 @@ class Truth(float):
     # ---we only need "¬", negation (10), accessed via: "s.not_()" or "~s".
 
     def not_(self) -> Truth:
-        """The negation ("not", ¬) unary operator (10), accessed by  `s.not_()` or `~s`.
+        """The negation ("not", ¬) unary operator (10), accessed by  ``s.not_()`` or ``~s``.
 
         Returns:
             The opposite of itself."""
         return global_norm.not_(self)  # Probably always the standard fuzzy not: 1 - self.s
-
 
     # binary operators
     # ignoring:  tautology (1111), contradiction (0000);
@@ -758,222 +803,218 @@ class Truth(float):
     # and_, or_, imp_, con_, iff_, xor_;  nand_, nor_, nimp_, ncon_:
 
     def and_(self, other: Truth | float | int | bool) -> Truth:
-        """The conjunction ("and", ∧) binary operator (0001), accessed by  `a.and_(b)` or `a & b`.
+        """The conjunction ("and", ∧) binary operator (0001), accessed by  ``a.and_(b)`` or ``a & b``.
 
         Returns:
-            The conjunction of `self` and `other`, the extent to which they are both true.
+            The conjunction of ``self`` and ``other``, the extent to which they are both true.
 
         Warning:
-            When calling `a.and_(b)`, `b` may be `Truth | float | int | bool`,
-            but `a` must be a `Truth` object, or an error will result.
-            Also, the boolean `and` operator is unaffected---it returns a `bool`:
-            the result of anding the crisped (defuzzified `bool`) versions of the operands."""
+            When calling ``a.and_(b)``, ``b`` may be ``Truth | float | int | bool``,
+            but ``a`` must be a ``Truth`` object.
+            Also, the boolean ``and`` operator is unaffected---it returns a ``bool``:
+            the result of anding the crisped (defuzzified ``bool``) versions of the operands."""
         return global_norm.and_(self, other)
 
     def or_(self, other: Truth | float | int | bool) -> Truth:
-        """The disjunction ("inclusive or", ∨) binary operator (0111), accessed by  `a.or_(b)` or `a | b`.
+        """The disjunction ("inclusive or", ∨) binary operator (0111), accessed by ``a.or_(b)`` or ``a | b``.
 
         Returns:
-            The disjunction of `self` and `other`, the extent to which either is true.
+            The disjunction of ``self`` and ``other``, the extent to which either is true.
 
         Warning:
-            When calling `a.or_(b)`, `b` may be `Truth | float | int | bool`,
-            but `a` must be a `Truth` object, or an error will result.
-            Also, the boolean `or` operator is unaffected---it returns a `bool`:
-            the result of oring the crisped (defuzzified `bool`) versions of the operands."""
+            When calling ``a.or_(b)``, ``b`` may be ``Truth | float | int | bool``,
+            but ``a`` must be a ``Truth`` object.
+            Also, the boolean ``or`` operator is unaffected---it returns a ``bool``:
+            the result of oring the crisped (defuzzified ``bool``) versions of the operands."""
         return global_norm.or_(self, other)
 
     def imp(self, other: Truth | float | int | bool) -> Truth:
         """The material implication ("imply", →) binary operator (1101); the truth of such statements as
-        "`self` implies `other`", or "if `self` then `other`";  accessed by `a.imp(b)` or `a >> b`.
+        "``self`` implies ``other``", or "if ``self`` then ``other``";  accessed by ``a.imp(b)`` or ``a >> b``.
 
         Returns:
-            The implication of `self` to `other`, the extent to which `self` must result in `other`.
+            The implication of ``self`` to ``other``, the extent to which ``self`` must result in ``other``.
 
         Warning:
-            When calling `a.imp(b)`, `b` may be `Truth | float | int | bool`,
-            but `a` must be a `Truth` object, or an error will result."""
+            When calling ``a.imp(b)``, ``b`` may be ``Truth | float | int | bool``,
+            but ``a`` must be a ``Truth`` object."""
         return global_norm.or_(self.not_(), other)
+
 
     def con(self, other: Truth | float | int | bool) -> Truth:
         """The converse implication ("con", ←) binary operator (1011); the truth of such statements as
-        "`other` implies `self`", or "if `other` then `self`";  accessed by `a.con_(b)` or `a << b`.
+        "``other`` implies ``self``", or "if ``other`` then ``self``";  accessed by ``a.con_(b)`` or ``a << b``.
 
         Returns:
-            The implication of `other` to `self` (i.e., of `self` from `other`),
-            the extent to which `other` must indicate that `self` was true.
+            The implication of ``other`` to ``self`` (i.e., of ``self`` from ``other``),
+            the extent to which ``other`` must indicate that ``self`` was true.
 
         Warning:
-            When calling `a.con(b)`, `b` may be `Truth | float | int | bool`,
-            but `a` must be a `Truth` object, or an error will result."""
+            When calling ``a.con(b)``, ``b`` may be ``Truth | float | int | bool``,
+            but ``a`` must be a ``Truth`` object."""
         return global_norm.or_(self, global_norm.not_(other))
 
     def iff(self, other: Truth | float | int | bool) -> Truth:
         """The equivalence or "biconditional" ("iff", ↔) binary operator (1001);
         familiar in Mathematics as "if and only if" and in Electronics as "xnor";
-        the truth of such statements as, "`self` and `other` imply each other", or
-        "`self` and `other` are true only to the same extent"; accessed by `a.iff(b)`.
+        the truth of such statements as, "``self`` and ``other`` imply each other", or
+        "``self`` and ``other`` are true only to the same extent"; accessed by ``a.iff(b)``.
 
         Returns:
-            The equivalence between `self` and `other`, the extent to which they have the same degree of truth.
+            The equivalence between ``self`` and ``other``, the extent to which they have the same degree of truth.
+
         Warning:
-            When calling `a.iff(b)`, `b` may be `Truth | float | int | bool`,
-            but `a` must be a `Truth` object, or an error will result."""
+            When calling ``a.iff(b)``, ``b`` may be ``Truth | float | int | bool``,
+            but ``a`` must be a ``Truth`` object."""
         return self.and_(other).or_(self.nor(other))
-
-
-
-
 
     def xor(self, other: Truth | float | int | bool) -> Truth:
         """The non-equivalence or "exclusive disjunction" ("exclusive or", ⨁) binary operator (0110);
         familiar in Electronics as "xor"; the truth of such statements as,
-        "either `self` or `other`, but not both together"; accessed by `a.xor(b)`.
+        "either ``self`` or ``other``, but not both together"; accessed by ``a.xor(b)``.
 
         Returns:
-            The exclusive disjunction between `self` and `other`, the extent to which they cannot occur together,
+            The exclusive disjunction between ``self`` and ``other``, the extent to which they cannot occur together,
             the extent to which their degrees of truth differ.
+
         Warning:
-            When calling `a.xor(b)`, `b` may be `Truth | float | int | bool`,
-            but `a` must be a `Truth` object, or an error will result."""
+            When calling ``a.xor(b)``, ``b`` may be ``Truth | float | int | bool``,
+            but ``a`` must be a ``Truth`` object."""
         return self.nimp(other).or_(self.ncon(other))
 
     def nand(self, other: Truth | float | int | bool) -> Truth:
         """The alternative denial ("nand", ↑) binary operator (1110), the inverse of :meth:`and_`,
-        accessed by `a.nand(b)`.
+        accessed by ``a.nand(b)``.
 
         Returns:
-            The inverse conjunction of `self` and `other`, the extent to which they are not both true.
+            The inverse conjunction of `self` and ``other``, the extent to which they are not both true.
 
         Warning:
-            When calling `a.nand(b)`, `b` may be `Truth | float | int | bool`,
-            but `a` must be a `Truth` object, or an error will result."""
+            When calling ``a.nand(b)``, ``b`` may be ``Truth | float | int | bool``,
+            but ``a`` must be a ``Truth`` object."""
         return global_norm.not_(global_norm.and_(self, other))
 
     def nor(self, other: Truth | float | int | bool) -> Truth:
         """The joint denial ("nor", ↓) binary operator (1000), the inverse of :meth:`or_`,
-        accessed by `a.nor(b)`.
+        accessed by ``a.nor(b)``.
 
         Returns:
-            The inverse disjunction of `self` and `other`, the extent to which both are false.
+            The inverse disjunction of ``self`` and ``other``, the extent to which both are false.
 
         Warning:
-            When calling `a.nor(b)`, `b` may be `Truth | float | int | bool`,
-            but `a` must be a `Truth` object, or an error will result."""
+            When calling ``a.nor(b)``, ``b`` may be ``Truth | float | int | bool``,
+            but ``a`` must be a ``Truth`` object."""
         return global_norm.not_(global_norm.or_(self, other))  # self.or_(other).not_()
 
     def nimp(self, other: Truth | float | int | bool) -> Truth:
         """The material nonimplication ("nimply", ↛) binary operator (0010);  the truth of such statements as
-        "`self` does not imply `other`", or "if `self` then not `other`";  the inverse of :meth:`imp_`;
-        accessed by `a.nimp(b)`.
+        "``self`` does not imply ``other``", or "if ``self`` then not ``other``";  the inverse of :meth:`imp`;
+        accessed by ``a.nimp(b)``.
 
         Returns:
-            The nonimplication of `self` to `other`; the extent to which `self` suppresses or inhibits `other`;
-            the extent to which the presence of `self` indicates that `other` will not occur.
+            The nonimplication of ``self`` to ``other``; the extent to which ``self`` suppresses or inhibits ``other``;
+            the extent to which the presence of ``self`` indicates that ``other`` will not occur.
 
         Warning:
-            When calling `a.nimp(b)`, `b` may be `Truth | float | int | bool`,
-            but `a` must be a `Truth` object, or an error will result."""
+            When calling ``a.nimp(b)``, ``b`` may be ``Truth | float | int | bool``,
+            but ``a`` must be a ``Truth`` object."""
         return global_norm.and_(self, other.not_())
 
     def ncon(self, other: Truth | float | int | bool) -> Truth:
         """The converse non-implication ("ncon", ↚) binary operator (0100); the truth of such statements as
-        "`other` does not imply `self`", or "if `other` then not `self`";  accessed by `a.ncon(b)`.
+        "``other`` does not imply ``self``", or "if ``other`` then not ``self``";  accessed by ``a.ncon(b)``.
 
         Returns:
-            The non-implication of `other` to `self`, the extent to which `other` indicates that `self` was false.
+            The non-implication of ``other`` to ``self``,
+            the extent to which ``other`` indicates that ``self`` was false.
 
         Warning:
-            When calling `a.ncon(b)`, `b` may be `Truth | float | int | bool`,
-            but `a` must be a `Truth` object, or an error will result."""
+            When calling ``a.ncon(b)``, ``b`` may be ``Truth | float | int | bool``,
+            but ``a`` must be a ``Truth`` object."""
         return global_norm.and_(global_norm.not_(self), other)
-
 
     # Operator symbol overrides:  these are for the most common operators that have a suitable overridable symbol:
     # `~  &  |  >>  <<` (not, and, or, implies, converse).
 
     def __invert__(self) -> Truth:
-        """Overloads the unary `~` (bitwise not) operator.
+        """Overloads the unary ``~`` (bitwise not) operator.
 
         Returns:
             The opposite of itself.
 
         Warning:
-            Applying `~` to anything but `Truth` objects will not produce a fuzzy result
-            ---`float` fails, `int` and `bool` do bitwise not, returning an `int`.
-            Also, the Boolean `not` operator is unaffected---it returns a `bool`:  the result of `not fuzzy.crisp()`:
-            defuzzifying the `Truth` object according to `Truth.global_threshold` and inverting its `bool` result."""
-        # There's no way to make this operate on `float`, `int`, or `bool` objects because there is no __rinvert__
+            Applying ``~`` to anything but ``Truth`` objects will not produce a fuzzy result
+            ---``float`` fails, ``int`` and ``bool`` do bitwise not, returning an ``int``.
+            Also, the Boolean ``not`` operator is unaffected---it returns a ``bool``:
+            the result of ``not fuzzy.crisp()``:  defuzzifying the ``Truth`` object
+            according to ``Truth.global_threshold`` and inverting its ``bool`` result."""
+        # There's no way to make this operate on ``float``, ``int``, or ``bool`` objects because there is no __rinvert__
         # method in which to put the Truth(float(self)).clip().not_(), because it's unary.
         return self.not_()
 
     def __and__(self, other: Truth) -> Truth:
-        """Overloads the binary & (bitwise and) operator.
+        """Overloads the binary ``&`` (bitwise and) operator.
 
         Returns:
             The fuzzy-logical conjunction (∧) of the operands.
 
         Warning:
-            One of the operands may be `float | int | bool`, but at least one must be a `Truth` object,
+            One of the operands may be ``float | int | bool``, but at least one must be a ``Truth`` object,
             or the expected fuzzy result will not be produced.
-            Also, the Boolean `and` operator is unaffected---it returns a `bool`:
+            Also, the Boolean ``and`` operator is unaffected---it returns a ``bool``:
             the result of crisping, then anding the operands."""
         return Truth.and_(self, other)
 
     def __rand__(self, other: Truth) -> Truth:
-        """Ensures that the overloading of `&` works as long as one operand is a `Truth` object."""
+        """Ensures that the overloading of ``&`` works as long as one operand is a ``Truth`` object."""
         return Truth.and_(Truth(float(other)).clip(), self)
 
     def __or__(self, other: Truth) -> Truth:
-        """Overloads the binary | (bitwise or) operator.
+        """Overloads the binary ``|`` (bitwise or) operator.
 
         Returns:
             The fuzzy-logical disjunction (∨) of the operands.
 
         Warning:
-            One of the operands may be `float | int | bool`, but at least one must be a `Truth` object,
+            One of the operands may be ``float | int | bool``, but at least one must be a ``Truth`` object,
             or the expected fuzzy result will not be produced.
-            Also, the Boolean `or` operator is unaffected---it returns a `bool`:
+            Also, the Boolean ``or`` operator is unaffected---it returns a ``bool``:
             the result of crisping, then oring the operands."""
         return Truth.or_(self, other)
 
     def __ror__(self, other: Truth) -> Truth:
-        """Ensures that the overloading of `|` works as long as one operand is a `Truth` object."""
+        """Ensures that the overloading of ``|`` works as long as one operand is a ``Truth`` object."""
         return Truth.or_(Truth(float(other)).clip(), self)
 
     def __rshift__(self, other: Truth) -> Truth:
-        """Overloads the binary `>>` (bitwise right shift) operator.
+        """Overloads the binary ``>>`` (bitwise right shift) operator.
 
         Returns:
             The fuzzy-logical implication (→) of the operands.
 
         Warning:
-            One of the operands may be `float | int | bool`, but at least one must be a `Truth` object,
+            One of the operands may be ``float | int | bool``, but at least one must be a ``Truth`` object,
             or the expected fuzzy result will not be produced."""
         return Truth.imp(self, other)
 
     def __rrshift__(self, other: Truth) -> Truth:
-        """Ensures that the overloading of `>>` works as long as one operand is a `Truth` object."""
+        """Ensures that the overloading of ``>>`` works as long as one operand is a ``Truth`` object."""
         return Truth.imp(Truth(float(other)).clip(), self)
 
     def __lshift__(self, other: Truth) -> Truth:
-        """Overloads the binary `<<` (bitwise left shift) operator.
+        """Overloads the binary ``<<`` (bitwise left shift) operator.
 
         Returns:
             The fuzzy-logical converse implication (←) of the operands.
 
         Warning:
-            One of the operands may be `float | int | bool`, but at least one must be a `Truth` object,
+            One of the operands may be ``float | int | bool``, but at least one must be a ``Truth`` object,
             or the expected fuzzy result will not be produced."""
         return Truth.con(self, other)
 
     def __rlshift__(self, other: Truth) -> Truth:
-        """Ensures that the overloading of `<<` works as long as one operand is a `Truth` object."""
+        """Ensures that the overloading of ``<<`` works as long as one operand is a ``Truth`` object."""
         return Truth.con(Truth(float(other)).clip(), self)
-
-
-
-
 
 
 # Here are the classes for fuzzy value and arithmetic:
@@ -1036,6 +1077,7 @@ class Truth(float):
 #     """The numerical representation of a (generally) fuzzy value.
 #
 #     To represent the suitabilities of all real numbers, it uses:
+
 #         * One Numpy array s(v) for one continuous domain [a, b].
 #         * A set of exceptional points {(v_i, s_i)} that always override the array.
 #         * An out-of-bounds suitability, s_0, that is assumed for any value otherwise undefined.
@@ -1110,7 +1152,7 @@ class Truth(float):
 #     """Describes a fuzzy number as a trianglular function with a peak (maximum s) and extreme limits (s==0)"""
 #
 #     def __init__(peak, domain):
-#         """Args:
+#         """Parameters:
 #             peak:
 #                 float: (most suitable) value , assumes s=1
 #                 (float, float): (value, suitability)
@@ -1250,22 +1292,22 @@ fa = Truth(0)
 # print(f"xor=0110: {fa.xor(fa)}, {fa.xor(tr)}, {tr.xor(fa)}, {tr.xor(tr)}")
 
 # TEST THE OVERLOADED OPERATORS ~ & | >> <<;  commutativity or not with float, int, bool:
-print(f"c={c}, d={d}, e={e}, f={f}, i={i}, b={b}")
-print(f"~c={~c}, ~d={~d}, ~e={~e}, ~f=ERR, ~i={~i}=UNX, ~b={~b}=UNX")
-print("")
-print(f"c&d={c&d}, c&f={c&f}, c&i={c&i}, c&b={c&b}")
-print(f"d&c={d&c}, f&c={f&c}, i&c={i&c}, b&c={b&c}")
-print(f"c|d={c|d}, c|f={c|f}, c|i={c|i}, c|b={c|b}")
-print(f"d|c={d|c}, f|c={f|c}, i|c={i|c}, b|c={b|c}")
-print(f"c>>d={c>>d}, c>>f={c>>f}, c>>i={c>>i}, c>>b={c>>b}")
-print(f"d>>c={d>>c}, f>>c={f>>c}, i>>c={i>>c}, b>>c={b>>c}")
-print(f"c<<d={c<<d}, c<<f={c<<f}, c<<i={c<<i}, c<<b={c<<b}")
-print(f"d<<c={d<<c}, f<<c={f<<c}, i<<c={i<<c}, b<<c={b<<c}")
-print("")   # truth tables:
-print(f"~=10: {~fa}, {~tr}")
-print(f"&=0001: {fa&(fa)}, {fa&(tr)}, {tr&(fa)}, {tr&(tr)}")
-print(f"|_=0111: {fa|(fa)}, {fa|(tr)}, {tr|(fa)}, {tr|(tr)}")
-print(f">>=1101: {fa>>(fa)}, {fa>>(tr)}, {tr>>(fa)}, {tr>>(tr)}")
-print(f"<<=1011: {fa<<(fa)}, {fa<<(tr)}, {tr<<(fa)}, {tr<<(tr)}")
+# print(f"c={c}, d={d}, e={e}, f={f}, i={i}, b={b}")
+# print(f"~c={~c}, ~d={~d}, ~e={~e}, ~f=ERR, ~i={~i}=UNX, ~b={~b}=UNX")
+# print("")
+# print(f"c&d={c&d}, c&f={c&f}, c&i={c&i}, c&b={c&b}")
+# print(f"d&c={d&c}, f&c={f&c}, i&c={i&c}, b&c={b&c}")
+# print(f"c|d={c|d}, c|f={c|f}, c|i={c|i}, c|b={c|b}")
+# print(f"d|c={d|c}, f|c={f|c}, i|c={i|c}, b|c={b|c}")
+# print(f"c>>d={c>>d}, c>>f={c>>f}, c>>i={c>>i}, c>>b={c>>b}")
+# print(f"d>>c={d>>c}, f>>c={f>>c}, i>>c={i>>c}, b>>c={b>>c}")
+# print(f"c<<d={c<<d}, c<<f={c<<f}, c<<i={c<<i}, c<<b={c<<b}")
+# print(f"d<<c={d<<c}, f<<c={f<<c}, i<<c={i<<c}, b<<c={b<<c}")
+# print("")   # truth tables:
+# print(f"~=10: {~fa}, {~tr}")
+# print(f"&=0001: {fa&(fa)}, {fa&(tr)}, {tr&(fa)}, {tr&(tr)}")
+# print(f"|_=0111: {fa|(fa)}, {fa|(tr)}, {tr|(fa)}, {tr|(tr)}")
+# print(f">>=1101: {fa>>(fa)}, {fa>>(tr)}, {tr>>(fa)}, {tr>>(tr)}")
+# print(f"<<=1011: {fa<<(fa)}, {fa<<(tr)}, {tr<<(fa)}, {tr<<(tr)}")
 
 # Truth.global_threshold = .8
