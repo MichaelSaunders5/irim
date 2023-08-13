@@ -13,7 +13,7 @@ Norm
     The abstract :class:`Norm` provides the operations:
 
         * :meth:`.Norm.not_` (¬, *negation*), and
-        * :meth:`.Norm.clip`;
+        * :meth:`.Norm.clip`, which clips floats onto [0,1];
 
     and guarantees the provision of:
 
@@ -22,9 +22,20 @@ Norm
         * :meth:`.Norm._and_integral`
         * :meth:`.Norm._or_integral`,
 
-    though these are to be
-    The logic operators can operate on tuples containing any combination of
+    though these will probably only ever be used privately, within the fuzzy arithmetic operators.
+    The logic operators can operate on `float` or :class:`numpy.ndarray` [and maybe Numerical?];  and,
+    in the case of the associative operators, on a `tuple` containing any number or combination of these.
 
+    :class:`Norm` objects are created by a factory class method, :meth:`.Norm.define`, and there are a great variety
+    of them to choose from:  :class:`Lax` (the opposite of :class:`Drastic`), :class:`MinMax` (Gödel-Zadeh),
+    (parameterized) :class:`Hamacher`, :class:`Prod` (Goguen), :class:`Einstein`, :class:`Nilpotent`,
+    :class:`Lukasiewicz` (Łukasiewicz), and :class:`Drastic`.  It's even possible to create one that is a linear
+    combination of two; or one based entirely on how "strict" you want it to be---that is, on how likely it is to
+    produce extreme results (falser ands and truer ors).
+
+    Unless you want to switch between Norms often, however, it will be easiest to set the :mod:`fuzzy` module's
+    :attr:`global_norm` attribute to the one you want.  The logical and mathematical operators of the :class:`Truth`
+    and :class:`Value` classes refer to it for all their calculations.  The default is :class:`Prod`.
 
 Truth
     A :class:`Truth` object is essentially a ``float`` restricted to [0,1].  It represents a *degree of truth*,
@@ -63,6 +74,7 @@ Truth
           *fuzzy* :class:`Truth` to a *crisp* ``bool``, by comparison to a threshold (given or by global default).
           (Consider, though, the utility of simply using a :class:`Truth` in its nuanced, ineffably beautiful,
           fuzzy form.)
+
 
 Value
     The :class:`.Value` class applies the idea of fuzzy truth to the representation of numbers.  A :class:`Value`
@@ -769,12 +781,14 @@ class Truth(float):
     # Unary operators (ignoring insistence (11), denial (00), and proposition (01))
     # ---we only need "¬", negation (10), accessed via: "s.not_()" or "~s".
 
-    def not_(self) -> Truth:
+    def not_(self, norm = None) -> Truth:
         """The negation ("not", ¬) unary operator (10), accessed by  ``s.not_()`` or ``~s``.
 
         Returns:
             The opposite of itself."""
-        return global_norm.not_(self)  # Probably always the standard fuzzy not: 1 - self.s
+        if not norm:
+            norm = global_norm
+        return norm.not_(self)  # Probably always the standard fuzzy not: 1 - self.s
 
     # binary operators
     # ignoring:  tautology (1111), contradiction (0000);
@@ -802,7 +816,7 @@ class Truth(float):
     # First, the basic functions that provide the calculation via the `global_norm`:
     # and_, or_, imp_, con_, iff_, xor_;  nand_, nor_, nimp_, ncon_:
 
-    def and_(self, other: Truth | float | int | bool) -> Truth:
+    def and_(self, other: Truth | float | int | bool, norm = None) -> Truth:
         """The conjunction ("and", ∧) binary operator (0001), accessed by  ``a.and_(b)`` or ``a & b``.
 
         Returns:
@@ -813,9 +827,11 @@ class Truth(float):
             but ``a`` must be a ``Truth`` object.
             Also, the boolean ``and`` operator is unaffected---it returns a ``bool``:
             the result of anding the crisped (defuzzified ``bool``) versions of the operands."""
-        return global_norm.and_(self, other)
+        if not norm:
+            norm = global_norm
+        return norm.and_(self, other)
 
-    def or_(self, other: Truth | float | int | bool) -> Truth:
+    def or_(self, other: Truth | float | int | bool, norm = None) -> Truth:
         """The disjunction ("inclusive or", ∨) binary operator (0111), accessed by ``a.or_(b)`` or ``a | b``.
 
         Returns:
@@ -826,9 +842,11 @@ class Truth(float):
             but ``a`` must be a ``Truth`` object.
             Also, the boolean ``or`` operator is unaffected---it returns a ``bool``:
             the result of oring the crisped (defuzzified ``bool``) versions of the operands."""
-        return global_norm.or_(self, other)
+        if not norm:
+            norm = global_norm
+        return norm.or_(self, other)
 
-    def imp(self, other: Truth | float | int | bool) -> Truth:
+    def imp(self, other: Truth | float | int | bool, norm = None) -> Truth:
         """The material implication ("imply", →) binary operator (1101); the truth of such statements as
         "``self`` implies ``other``", or "if ``self`` then ``other``";  accessed by ``a.imp(b)`` or ``a >> b``.
 
@@ -838,10 +856,12 @@ class Truth(float):
         Warning:
             When calling ``a.imp(b)``, ``b`` may be ``Truth | float | int | bool``,
             but ``a`` must be a ``Truth`` object."""
-        return global_norm.or_(self.not_(), other)
+        if not norm:
+            norm = global_norm
+        return norm.or_(self.not_(norm), other)
 
 
-    def con(self, other: Truth | float | int | bool) -> Truth:
+    def con(self, other: Truth | float | int | bool, norm = None) -> Truth:
         """The converse implication ("con", ←) binary operator (1011); the truth of such statements as
         "``other`` implies ``self``", or "if ``other`` then ``self``";  accessed by ``a.con_(b)`` or ``a << b``.
 
@@ -852,9 +872,11 @@ class Truth(float):
         Warning:
             When calling ``a.con(b)``, ``b`` may be ``Truth | float | int | bool``,
             but ``a`` must be a ``Truth`` object."""
-        return global_norm.or_(self, global_norm.not_(other))
+        if not norm:
+            norm = global_norm
+        return self.or_(norm.not_(other), norm)
 
-    def iff(self, other: Truth | float | int | bool) -> Truth:
+    def iff(self, other: Truth | float | int | bool, norm = None) -> Truth:
         """The equivalence or "biconditional" ("iff", ↔) binary operator (1001);
         familiar in Mathematics as "if and only if" and in Electronics as "xnor";
         the truth of such statements as, "``self`` and ``other`` imply each other", or
@@ -866,9 +888,11 @@ class Truth(float):
         Warning:
             When calling ``a.iff(b)``, ``b`` may be ``Truth | float | int | bool``,
             but ``a`` must be a ``Truth`` object."""
-        return self.and_(other).or_(self.nor(other))
+        if not norm:
+            norm = global_norm
+        return norm.or_(norm.and_(self, other),self.nor(other, norm))
 
-    def xor(self, other: Truth | float | int | bool) -> Truth:
+    def xor(self, other: Truth | float | int | bool, norm = None) -> Truth:
         """The non-equivalence or "exclusive disjunction" ("exclusive or", ⨁) binary operator (0110);
         familiar in Electronics as "xor"; the truth of such statements as,
         "either ``self`` or ``other``, but not both together"; accessed by ``a.xor(b)``.
@@ -880,9 +904,11 @@ class Truth(float):
         Warning:
             When calling ``a.xor(b)``, ``b`` may be ``Truth | float | int | bool``,
             but ``a`` must be a ``Truth`` object."""
-        return self.nimp(other).or_(self.ncon(other))
+        if not norm:
+            norm = global_norm
+        return norm.or_(self.nimp(other, norm), self.ncon(other, norm))
 
-    def nand(self, other: Truth | float | int | bool) -> Truth:
+    def nand(self, other: Truth | float | int | bool, norm = None) -> Truth:
         """The alternative denial ("nand", ↑) binary operator (1110), the inverse of :meth:`and_`,
         accessed by ``a.nand(b)``.
 
@@ -892,9 +918,11 @@ class Truth(float):
         Warning:
             When calling ``a.nand(b)``, ``b`` may be ``Truth | float | int | bool``,
             but ``a`` must be a ``Truth`` object."""
+        if not norm:
+            norm = global_norm
         return global_norm.not_(global_norm.and_(self, other))
 
-    def nor(self, other: Truth | float | int | bool) -> Truth:
+    def nor(self, other: Truth | float | int | bool, norm = None) -> Truth:
         """The joint denial ("nor", ↓) binary operator (1000), the inverse of :meth:`or_`,
         accessed by ``a.nor(b)``.
 
@@ -904,9 +932,11 @@ class Truth(float):
         Warning:
             When calling ``a.nor(b)``, ``b`` may be ``Truth | float | int | bool``,
             but ``a`` must be a ``Truth`` object."""
+        if not norm:
+            norm = global_norm
         return global_norm.not_(global_norm.or_(self, other))  # self.or_(other).not_()
 
-    def nimp(self, other: Truth | float | int | bool) -> Truth:
+    def nimp(self, other: Truth | float | int | bool, norm = None) -> Truth:
         """The material nonimplication ("nimply", ↛) binary operator (0010);  the truth of such statements as
         "``self`` does not imply ``other``", or "if ``self`` then not ``other``";  the inverse of :meth:`imp`;
         accessed by ``a.nimp(b)``.
@@ -918,9 +948,11 @@ class Truth(float):
         Warning:
             When calling ``a.nimp(b)``, ``b`` may be ``Truth | float | int | bool``,
             but ``a`` must be a ``Truth`` object."""
+        if not norm:
+            norm = global_norm
         return global_norm.and_(self, other.not_())
 
-    def ncon(self, other: Truth | float | int | bool) -> Truth:
+    def ncon(self, other: Truth | float | int | bool, norm = None) -> Truth:
         """The converse non-implication ("ncon", ↚) binary operator (0100); the truth of such statements as
         "``other`` does not imply ``self``", or "if ``other`` then not ``self``";  accessed by ``a.ncon(b)``.
 
@@ -931,6 +963,8 @@ class Truth(float):
         Warning:
             When calling ``a.ncon(b)``, ``b`` may be ``Truth | float | int | bool``,
             but ``a`` must be a ``Truth`` object."""
+        if not norm:
+            norm = global_norm
         return global_norm.and_(global_norm.not_(self), other)
 
     # Operator symbol overrides:  these are for the most common operators that have a suitable overridable symbol:

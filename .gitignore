@@ -1,1 +1,4 @@
 /venv/
+/doc/build/
+/doc/source/_static/
+/doc/source/_templates/
