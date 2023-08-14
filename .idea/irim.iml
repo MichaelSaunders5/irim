@@ -2,6 +2,19 @@
 <module type="PYTHON_MODULE" version="4">
   <component name="NewModuleRootManager">
     <content url="file://$MODULE_DIR$">
+      <excludeFolder url="file://$MODULE_DIR$/doc/build/.doctrees" />
+      <excludeFolder url="file://$MODULE_DIR$/doc/build/_images" />
+      <excludeFolder url="file://$MODULE_DIR$/doc/build/_sources" />
+      <excludeFolder url="file://$MODULE_DIR$/doc/build/_static" />
+      <excludeFolder url="file://$MODULE_DIR$/doc/build/autoapi" />
+      <excludeFolder url="file://$MODULE_DIR$/doc/build/doctrees/autoapi" />
+      <excludeFolder url="file://$MODULE_DIR$/doc/build/html/_images" />
+      <excludeFolder url="file://$MODULE_DIR$/doc/build/html/_sources/autoapi" />
+      <excludeFolder url="file://$MODULE_DIR$/doc/build/html/_static/css" />
+      <excludeFolder url="file://$MODULE_DIR$/doc/build/html/_static/js" />
+      <excludeFolder url="file://$MODULE_DIR$/doc/build/html/autoapi" />
+      <excludeFolder url="file://$MODULE_DIR$/doc/source/_static" />
+      <excludeFolder url="file://$MODULE_DIR$/doc/source/_templates" />
       <excludeFolder url="file://$MODULE_DIR$/venv" />
     </content>
     <orderEntry type="inheritedJdk" />

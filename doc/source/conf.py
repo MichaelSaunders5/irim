@@ -24,7 +24,8 @@ extensions = [
     'sphinx.ext.autosummary',
     'sphinx.ext.napoleon',
     'sphinx.ext.imgmath',
-    'autoapi.extension'
+    'autoapi.extension',
+    'sphinx.ext.viewcode'
 ]
 
 autoapi_type = 'python'
