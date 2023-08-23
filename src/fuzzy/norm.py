@@ -17,14 +17,17 @@ For :meth:`.Norm.not_`, only the standard fuzzy negation, ¬s=1-s, is used.  It 
 that is continuous, invertible (¬¬s=s), and compatible with crisp negation (¬0=1, ¬1=0).
 Because of De Morgan's laws (¬(p∧q)=(¬p)∨(¬q); ¬(p∨q)=(¬p)∧(¬q)), the definition of any two of {¬, ∧, ∨}
 implies the definition of the third.  Therefore, every t-norm unambiguously implies a dual co-norm,
-so concrete subclasses of :class:`.Norm` should implement both :meth:`.Norm.and_` and :meth:`.Norm.or_`.
+so concrete subclasses of :class:`.Norm` should implement a :meth:`.Norm.and_` and :meth:`.Norm.or_`
+that are properly related.
 
 The integral forms will probably only ever be used privately, within the fuzzy arithmetic operators that require them.
 I call them "integrals" by analogy with Riemann and product integrals, which respectively sum and multiply an
 infinitude of infinitesimal numbers---these logical integrals do the same with an infinitude of fuzzy truths.
+They should be directly analogous to their discrete counterparts, :meth:`.Norm.and_` and :meth:`.Norm.or_`.
 
-The logic operators can operate on ``float`` or :class:`numpy.ndarray` objects.  (The main purpose of the array
-functionality is to support operations in the :class:`Value` class.)  Because :meth:`.Norm.not_` is unary,
+The logic operators can operate on ``float`` or :class:`numpy.ndarray` objects with the usual presumption of range
+on [0,1].  The purpose of the :class:`numpy.ndarray` functionality is to support operations in the :class:`Value`
+class---it is not expected to be used publicly.  Because :meth:`.Norm.not_` is unary,
 it takes only one argument at a time.  The other methods, :meth:`.Norm.and_` and :meth:`.Norm.or_`, are
 associative, so they can take one or more arguments in any combination of types (but if more than one array
 is present, they must all have the same length).  Subclasses of :class:`Norm`, however, need only define them
@@ -40,16 +43,16 @@ or one based entirely on how "strict" you want it to be---that is, on how likely
 produce extreme results (falser ands and truer ors).
 
 Unless you want to switch between Norms often, however, it will be easiest to set the :mod:`fuzzy` module's
-:attr:`global_norm` attribute to the one you want.  The logical and mathematical operators of the :class:`.Truth`
-and :class:`.Value` classes refer to it for all their calculations.  The default is :class:`Prod`.
+:attr:`global_norm` attribute to the one you want (the default is :class:`Prod`).  The logical and mathematical
+operators of the :class:`.Truth` and :class:`.Value` classes refer to it for all their calculations.
 
-While the operands in :mod:`Norm` may generally be of type ``float``, or :class:`numpy.ndarray` with
-the usual presumption of range, the array facility is intended only for the private use of class :class:`Value`.
+Most users will need only :class:`Truth` and  :class:`Value` objects, used as if they were ``bool`` and ``float``
+objects with some added functionality.
 """
 
 from __future__ import annotations
 
-import math
+from math import exp, floor, ceil
 from abc import ABC, abstractmethod
 from typing import Union, Callable
 
@@ -232,7 +235,7 @@ class Norm(ABC):
     # I only need the _or_integral for fuzzy arithmetic, but I'm defining the _and_integral for completeness.
     # many of these implementations will require:
     #     s = np.trapz(z) / line_length                       # the definite (Riemann) line integral
-    #     p = math.exp(np.trapz(np.log(z))) / line_length     # the definite geometric (product) line integral
+    #     p = exp(np.trapz(np.log(z))) / line_length          # the definite geometric (product) line integral
     # ---the definite (summation, product) integrals over some line on a function.
     # They must always be divided by their line_length so that they have the same metric (this is not true
     # for min/max operators, because extrema aren't diminished by rarity).  For the same reason,
@@ -328,12 +331,12 @@ class Hamacher(SimpleNorm):
 
     def _and_integral(self, z: np.ndarray, line_length: float) -> float:
         s = np.trapz(z) / line_length
-        p = math.exp(np.trapz(np.log(z))) / line_length
+        p = exp(np.trapz(np.log(z))) / line_length
         return 0 if s == p else (p / (s - p))
 
     def _or_integral(self, z: np.ndarray, line_length: float) -> float:
         s = np.trapz(z) / line_length
-        p = math.exp(np.trapz(np.log(z))) / line_length
+        p = exp(np.trapz(np.log(z))) / line_length
         return s / (1 + p)
 
 
@@ -347,12 +350,12 @@ class Prod(SimpleNorm):
         return a + b - a * b
 
     def _and_integral(self, z: np.ndarray, line_length: float) -> float:
-        p = math.exp(np.trapz(np.log(z)))  # definite geometric (product) integral
+        p = exp(np.trapz(np.log(z)))  # definite geometric (product) integral
         return p / line_length
 
     def _or_integral(self, z: np.ndarray, line_length: float) -> float:
         s = np.trapz(z)
-        p = math.exp(np.trapz(np.log(z)))
+        p = exp(np.trapz(np.log(z)))
         return (s - p) / line_length
 
 
@@ -367,12 +370,12 @@ class Einstein(SimpleNorm):
 
     def _and_integral(self, z: np.ndarray, line_length: float) -> float:
         s = np.trapz(z) / line_length
-        p = math.exp(np.trapz(np.log(z))) / line_length
+        p = exp(np.trapz(np.log(z))) / line_length
         return p / (p - s + 2)
 
     def _or_integral(self, z: np.ndarray, line_length: float) -> float:
         s = np.trapz(z) / line_length
-        p = math.exp(np.trapz(np.log(z))) / line_length
+        p = exp(np.trapz(np.log(z))) / line_length
         return s / (1 + p)
 
 
@@ -485,12 +488,12 @@ class ParameterizedHamacher(ParameterizedNorm):
 
     def _and_integral(self, z: np.ndarray, line_length: float) -> float:
         s = np.trapz(z) / line_length
-        p = math.exp(np.trapz(np.log(z))) / line_length
+        p = exp(np.trapz(np.log(z))) / line_length
         return 0 if self._p == s == 0 else p / (self._p + (1 - self._p) * (s - p))
 
     def _or_integral(self, z: np.ndarray, line_length: float) -> float:
         s = np.trapz(z) / line_length
-        p = math.exp(np.trapz(np.log(z))) / line_length
+        p = exp(np.trapz(np.log(z))) / line_length
         return (s + (self._p - 2) * p) / (1 + (self._p - 1) * p)
 
 
@@ -564,7 +567,7 @@ class StrictnessNorm(Norm):
         x = [-100.0, -75.69, -49.78, -22.42, 5.00, 33.20, 63.63, 100.0]
         y = np.arange(0, 8)
         w = np.interp(strictness, x, y)
-        n = CompoundNorm(name[math.floor(w)], name[math.ceil(w)], 100 * (w % 1))
+        n = CompoundNorm(name[floor(w)], name[ceil(w)], 100 * (w % 1))
         return n
 
 
@@ -572,3 +575,4 @@ class StrictnessNorm(Norm):
 
 global_norm = Norm.define(norm="pp")  # The default Prod t-norm is probably all you need.
 """The Norm used by operators as a default, and by all overloaded operators."""
+

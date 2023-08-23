@@ -1,0 +1,12 @@
+LICENSE
+setup.py
+src/fuzzy/__init__.py
+src/fuzzy/norm.py
+src/fuzzy/truth.py
+src/fuzzy/value.py
+src/irim/__init__.py
+src/irim.egg-info/PKG-INFO
+src/irim.egg-info/SOURCES.txt
+src/irim.egg-info/dependency_links.txt
+src/irim.egg-info/requires.txt
+src/irim.egg-info/top_level.txt

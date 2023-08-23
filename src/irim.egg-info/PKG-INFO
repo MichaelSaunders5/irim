@@ -1,0 +1,5 @@
+Metadata-Version: 2.1
+Name: irim
+Version: 0.0.0
+Provides-Extra: tests
+License-File: LICENSE

@@ -1,9 +1,71 @@
 # Here is where I am testing or playing around or something.
 
+from math import log
 import fuzzy.norm as fzn
+from fuzzy.norm import Norm
+from fuzzy.truth import Truth
 
 n = fzn.Norm.define()
-print(n.or_(.5, .5, .5))
+alt_n = fzn.Norm.define(norm='ee')
+# print(n.or_(.5, .5, .5))
+# print(n.and_(.5, .5, .5))
+a = Truth(.5)
+b = Truth(.5)
+c = 8
+# print(n.and_(b, b, b))
+# print(n.or_(b, b, b))
+print(a.and_(b, a))
+print(a.and_(b, .5))
+print(a.or_(b, b))
+print(a.or_(b, .5))
+print(f"and_ = {a.and_(b, 1, alt_n)}, or_ = {a.or_(b, 0, alt_n)}, imp = {a.imp(b)}, con = {a.con(b)}, iff = {a.iff(b)};  ")
+# print(f"xor = {a.xor(b)}, nand = {a.nand(b)}, nor = {a.nor(b)}, nimp = {a.nimp(b)}, ncon = {a.ncon(b)}")
+# print(f"not_ = {a.not_()}")
+# print(f"a & b = {a & b}, a & .5 = {a & .5}, .5 & b = {.5 & b}")
+# print(f".5 & b, a = {a & a & .5}, ~~a = {~(a & b)}")
+
+print(f"a + b = {a + b}, a - b = {a - b}, a ⨁ b = {a @ b}")
+print(f"a default Truth = {Truth(0, logarithmic=True)}")
+# Truth.global_threshold = .8
+
+f = Truth(.1)
+mf = Truth(.4)
+m = Truth(.5)
+mt = Truth(.6)
+t = Truth(.9)
+# print(f"10 = {f.not_()}, {t.not_()}")
+# print(f"0001 = {f.and_(f)}, {f.and_(t)}, {t.and_(f)}, {t.and_(t)}")
+# print(f"0111 = {f.or_(f)}, {f.or_(t)}, {t.or_(f)}, {t.or_(t)}")
+# print(f"1101 = {f.imp(f)}, {f.imp(t)}, {t.imp(f)}, {t.imp(t)}")
+# print(f"1011 = {f.con(f)}, {f.con(t)}, {t.con(f)}, {t.con(t)}")
+# print(f"1001 = {f.iff(f)}, {f.iff(t)}, {t.iff(f)}, {t.iff(t)}")
+# print(f"0110 = {f.xor(f)}, {f.xor(t)}, {t.xor(f)}, {t.xor(t)}")
+# print(f"1110 = {f.nand(f)}, {f.nand(t)}, {t.nand(f)}, {t.nand(t)}")
+# print(f"1000 = {f.nor(f)}, {f.nor(t)}, {t.nor(f)}, {t.nor(t)}")
+# print(f"0010 = {f.nimp(f)}, {f.nimp(t)}, {t.nimp(f)}, {t.nimp(t)}")
+# print(f"0100 = {f.ncon(f)}, {f.ncon(t)}, {t.ncon(f)}, {t.ncon(t)}")
+#
+#
+# print(f"10 = {~f}, {~t}")
+# print(f"0001 = {f & f}, {f & t}, {t & f}, {t & t}")
+# print(f"0111 = {f | f}, {f | t}, {t | f}, {t | t}")
+# print(f"1101 = {f >> f}, {f >> t}, {t >> f}, {t >> t}")
+# print(f"1011 = {f << f}, {f << t}, {t << f}, {t << t}")
+# print(f"1001 = {~(f @ f)}, {~(f @ t)}, {~(t @ f)}, {~(t @ t)}")
+# print(f"0110 = {f @ f}, {f @ t}, {t @ f}, {t @ t}")
+# print(f"1110 = {~(f & f)}, {~(f & t)}, {~(t & f)}, {~(t & t)}")
+# print(f"1000 = {~(f | f)}, {~(f | t)}, {~(t | f)}, {~(t | t)}")
+# print(f"0010 = {~(f >> f)}, {~(f >> t)}, {~(t >> f)}, {~(t >> t)}")
+# print(f"0100 = {~(f << f)}, {~(f << t)}, {~(t << f)}, {~(t << t)}")
+
+print(f"weight of {f}: -100: {f^-10}, -50: {f^-5}, 0: {f^0}, 50: {f^5}, 100: {f^10}")
+print(f"weight of {mf}: -100: {mf^-10}, -50: {mf^-5}, 0: {mf^0}, 50: {mf^5}, 100: {mf^10}")
+print(f"weight of {m}: -100: {m^-10}, -50: {m^-5}, 0: {m^0}, 50: {m^5}, 100: {m^10}")
+print(f"weight of {mt}: -100: {mt^-10}, -50: {mt^-5}, 0: {mt^0}, 50: {mt^5}, 100: {mt^10}")
+print(f"weight of {t}: -100: {t^-10}, -50: {t^-5}, 0: {t^0}, 50: {t^5}, 100: {t^10}")
+print(f"{.7^Truth()}")
+
+
 
 # #  This animates the norms (by strictness) for inspection.
 #

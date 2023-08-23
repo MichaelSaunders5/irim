@@ -33,6 +33,9 @@ autoapi_type = 'python'
 autoapi_dirs = ['../../src']
 autoapi_options = ['members', 'show-inheritance', 'show-module-summary']
 autoapi_member_order = 'bysource'
+autoapi_python_class_content = 'both'
+
+napoleon_use_param = False  # Somehow, this line allows paragraphs in parameter descriptions.
 
 templates_path = ['_templates']
 exclude_patterns = []
@@ -40,10 +43,9 @@ exclude_patterns = []
 imgmath_font_size = 10
 
 intersphinx_mapping = {'numpy': ('https://numpy.org/doc/stable/', None)}
-# 'python': ('https://docs.python.org/3/', None),
+#                        'python': ('https://docs.python.org/3', None)}   #not working 230820
 # 'scipy': ('https://docs.scipy.org/doc/scipy/', None),
 # 'matplotlib': ('https://matplotlib.org/stable/', None)
-
 
 # -- Options for HTML output -------------------------------------------------
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#options-for-html-output
