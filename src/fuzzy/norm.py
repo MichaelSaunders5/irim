@@ -52,8 +52,8 @@ objects with some added functionality.
 
 from __future__ import annotations
 
-from math import exp, floor, ceil
 from abc import ABC, abstractmethod
+from math import exp, floor, ceil
 from typing import Union, Callable
 
 import numpy as np
@@ -575,4 +575,3 @@ class StrictnessNorm(Norm):
 
 global_norm = Norm.define(norm="pp")  # The default Prod t-norm is probably all you need.
 """The Norm used by operators as a default, and by all overloaded operators."""
-
