@@ -72,8 +72,10 @@ from fuzzy.value import *
 fxp = Triangle(0,2.5,5).evaluate(.5)
 te = Numerical(.1, (0,4),points=np.array([[8.,.9], [5.,.5], [3.,.5]]))
 td = Triangle(0, 2, 5, discrete=False, step=.5, origin=-.1)
-x = Points(((0,0), (2,0), (1,.8)), continuous=True, discrete=True)
+x = DPoints(((0,0), (2,0), (1,.8)))
 print(x.suitability(1))
+x = CPoints(((0,0), (1,.8), (2,0)), discrete=False)
+print(x.suitability(.5))
 
 
 

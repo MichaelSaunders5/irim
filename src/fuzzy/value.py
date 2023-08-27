@@ -37,7 +37,7 @@ class Interpolator:
             kwargs = dict(type="linear")
         self.parameters = kwargs
 
-    def interpolate(self, value: Union[np.ndarray, float], v: np.ndarray, s: np.ndarray) -> float:
+    def interpolate(self, value: Union[np.ndarray, float], v: np.ndarray, s: np.ndarray) -> Union[np.ndarray, float]:
         satv = 0
         if self.parameters['type'] == "linear":
             satv = np.interp(value, v, s)  # This is only linear.  Good enough?
@@ -151,6 +151,19 @@ class Value(ABC):
         value, _ = self.crisp(Value.default_resolution)  # what default resolution is appropriate???
         return value
 
+    @staticmethod
+    def _scale(p: np.ndarray, scale: Tuple[float, float]) -> np.ndarray:
+        """A helper function to scale the suitabilities of a set of (v,s) pairs according to ``scale``
+        taken as (min,max)."""
+        v = p[:, 0]
+        s = p[:, 1]
+        raw_min, raw_max = np.min(s), np.max(s)
+        if raw_min == raw_max:
+            s = (scale[0] + scale[1]) / 2
+        else:
+            s = scale[0] + (scale[1] - scale[0]) * (s - raw_min) / (raw_max - raw_min)
+        return np.dstack((v, s))
+
 
 class Numerical(Value):
     """The numerical representation of a fuzzy value.
@@ -243,7 +256,7 @@ class Numerical(Value):
         return self
 
     def impose_domain(self, imposed_domain: (float, float)) -> Numerical:
-        """Returns a copy of ``self``without exceptional points or continuous domain outside of ``imposed_domain``."""
+        """Returns a copy of ``self``without exceptional points or continuous domain outside ``imposed_domain``."""
         if self.d is None:
             d = None
         else:
@@ -275,15 +288,37 @@ class Numerical(Value):
         return trimmed
 
 
-# # Triangle, Trapezoid, Bell, Cauchy, Gauss, Points --- "atoms" defining a value;
+# # Triangle, Trapezoid, Bell, Cauchy, Gauss, DPoints, CPoints --- "atoms" defining a value;
 # # ValueNot, ValueAnd, ValueOr --- logic on values;
 # # Sum, Difference, Prod, Quotient, Focus, Abs, Inverse --- arithmetic on values.
+
+
+class DPoints(Numerical):
+    """A fuzzy number defined as singular points---discrete (v,s) pairs."""
+
+    def __init__(self, singular_points: Iterable[Tuple[float, float]],
+                 scale: Tuple[float, float] = None, default_suitability: float = 0) -> None:
+        """
+        Args:
+            points:  A collection of (*value*, *suitability*) pairs.  All *values* must be unique
+                and all *suitabilities* must be on [0,1].
+            scale:  If defined, the range of ``points`` is linearly scaled to ``scale``, taken as (*min*, *max*).
+                If *min*>*max*, the sense of the suitabilities is flipped.
+                If *min*==*max*, all suitabilities are the average of *min* and *max*.
+            default_suitability:  The suitability outside the defined domain, defaults to 0.
+            """
+        p = np.array(singular_points)
+        if scale is not None:
+            p = Value._scale(p, scale)
+        super().__init__(resolution=Value.default_resolution, domain=None,
+                         points=p, default_suitability=default_suitability)
+
 
 class Atom(Value):
     """The ancestor of classes which describe single fuzzy numbers as continuous functions which may be discretized.
     Much of the initialization is handled here.  This is an effectively abstract class.
 
-    Subclasses need only define an s(v) function in thier _sample mehthod."""
+    Subclasses need only define an s(v) function in their _sample method."""
 
     def __init__(self, domain: Tuple[float, float],
                  peak: float = 1., default_suitability: float = 0.,
@@ -393,107 +428,45 @@ class Triangle(Atom):
         return s
 
 
-class Points(Atom):
-    """Describe a fuzzy number as a set of (v,s) pairs.
+class CPoints(Atom):
+    """A fuzzy number defined as knots for interpolation---(v,s) pairs.
 
-    They may be taken as discrete points or as a continuous function---as knots in an interpolation."""
+    The resulting function may be taken as continuous or defined only at uniformly spaced points."""
 
-    def __init__(self, points: Iterable[Tuple[float, float]],
-                 continuous: bool = False, interp: Interpolator = None,
+    def __init__(self, knots: Iterable[Tuple[float, float]], interp: Interpolator = None,
                  scale: Tuple[float, float] = None, default_suitability: float = 0,
                  discrete: bool = False, step: float = 1, origin: float = None) -> None:
         """
         Args:
-            points:  A collection of (*value*, *suitability*) pairs.  All *values* must be unique
-                and all *suitabilities* must be on [0,1].
-            continuous: If ``False`` (the default), the points are singular and the suitability elsewhere is the
-                ``default_suitability``.  If ``True``, a continuous function is interpolated between the points.
-            interp: The Interpolator used if ``continuous`` is True.  The default is linear.
+            knots:  A collection of (*value*, *suitability*) pairs---knots to be interpolated between, producing s(v).
+                All *values* must be unique and all *suitabilities* must be on [0,1].
+            interp: The Interpolator used to construct the s(v) function.  The default is linear.
             scale:  If defined, the range of ``points`` is linearly scaled to ``scale``, taken as (*min*, *max*).
                 If *min*>*max*, the sense of the suitabilities is flipped.
                 If *min*==*max*, all suitabilities are the average of *min* and *max*.
             default_suitability:  The suitability outside the defined domain, defaults to 0.
-            discrete:  Ignored if ``continuous`` is ``False``.  Only meaningful if ``continuous``
-                and ``discrete`` are both ``True``: then the continuous function describes the *suitabilities*
+            discrete:  If ``True``, the continuous s(v) function describes the *suitabilities*
                 of a set of singular points, the *values* of which are determined by ``step`` and ``origin``.
             step:  If ``discrete``, the singular points are spaced at these intervals about ``origin``.
             origin: If ``discrete``, the value about which the singular points are spaced.
                 If undefined, the default is the midpoint value of ``points``.
-                N.B.: it needn't be in the continuous domain.
+                N.B.: it can be outside ``points``.
             """
-        p = np.array(points)
-        sorted = p[p[:, 0].argsort()]
-        v = sorted[:, 0]
-        s = sorted[:, 1]
-        if v[:-1][v[1:] == v[:-1]]:
-            raise ValueError("You cannot define two suitabilities for the same value in ``points``.")
-        raw_min, raw_max = np.min(s), np.max(s)
-        if scale is None:
-            if (raw_min < 0) or (raw_max > 1):
-                raise ValueError("Suitabilities like ``points[v,1]`` must be on [0,1].")
-        else:
-            if (scale[0] < 0) or (scale[1] > 1) or (scale[1] < 0) or (scale[0] > 1):
-                raise ValueError("Suitabilities like ``scale`` must be on [0,1].")
-            if raw_min == raw_max:
-                s = (scale[0] + scale[1]) / 2
-            s = scale[0] + (scale[1] - scale[0]) * (s - raw_min) / (raw_max - raw_min)
-        domain = (np.min(v), np.max(v))
+        p = np.array(knots)
+        p = p[p[:, 0].argsort()]
+        if scale is not None:
+            p = Value._scale(p, scale)
+        self.points_v = p[:, 0]
+        self.points_s = p[:, 1]
+        domain = (np.min(self.points_v), np.max(self.points_v))
         origin = (domain[0] + domain[1]) / 2 if origin is None else origin
-        domain = domain if continuous else None
         if interp is None:
             interp = Value.default_interpolator
-        discrete = discrete if continuous else True  # does this matter?
-
         super().__init__(domain, 1, default_suitability, discrete, step, origin)
         self.interp = interp
-        self.points = np.dstack((v, s))[0]
-        self.continuous = continuous
-        if not continuous:  # then resolution is meaningless and it's okay to construct the Numerical ahead of time.
-            self.numerical = Numerical(Value.default_resolution, default_suitability=self.ds)
-            self.numerical.xp = self.points  # They've already been checked for validity.
 
     def _sample(self, v: np.ndarray) -> np.ndarray:
         """Returns the suitability for every value in ``v``."""
-        # if continuous, interpolate over whole domain, else, ...
-        if self.continuous:
-            s = self.interp.interpolate(v, self.points[:, 0], self.points[:, 1])
-        else:
-            s = super()._sample(v)  # None  # It should never get here.
-        return s
+        return self.interp.interpolate(v, self.points_v, self.points_s)
 
-    def evaluate(self, resolution: float) -> Numerical:
-        """Returns a numerical representation of ``self``."""
-        # if continuous, interpolate over whole domain, else, ...
-        if self.continuous:
-            n = super().evaluate(resolution)
-        else:
-            n = self.numerical
-
-        return n
-
-    def suitability(self, value: float) -> float:
-        """Returns the suitability of a given value as usual.
-
-        This uses the _sample() method, which must be defined to accept numpy.ndarray.
-        The alternative would be to implement this method for each subclass with a calculation shadowing its _sample().
-        """
-        if not self.continuous:
-            return self.numerical.suitability(value, self.interp)
-        else:
-            return super().suitability(value)
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-# USA: balance, Labcorps, kroger: ?, commit-push,
+# USA: balance, Labcorps, kroger: ?, commit-push, Anthelion, Jangwa
