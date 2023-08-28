@@ -1,5 +1,13 @@
 """All the facilities for working with fuzzy logic and arithmetic.
 
+.. epigraph::
+
+   | “If a man will begin with certainties, he shall end in doubts;
+   | but if he will be content to begin with doubts, he shall end in certainties.”
+
+   -- Francis Bacon, *Of the Proficience and Advancement of Learning, Divine and Human*
+
+
 Introduction
 ------------
 

@@ -13,7 +13,6 @@
 
    README
 
-
 Indices and tables
 ==================
 

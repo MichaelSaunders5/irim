@@ -1,21 +1,193 @@
-"""Value
-The :class:`.Value` class applies the idea of fuzzy truth to the representation of numbers.  A :class:`Value`
-object is a function of truth vs. value.  We may think of the function as describing the suitability of each
-possible value for some purpose.  E.g., we might describe room temperature as a symmetrical triangular function
-on (68, 76)°F or (20, 24)°C.  In this way, we might state our opinions as "preference curves".  We might also
-represent empirical knowledge as fuzzy numbers.  E.g., sensory dissonance vs. interval is a highly structured
-function with many peaks and valleys across a wide domain, but all of this information can be encapsulated
+"""The :class:`.Value` class applies the idea of fuzzy truth to the representation of numbers.
+
+Introduction
+------------
+
+A :class:`Value` object is a function of truth vs. value.  We may think of the function as describing the suitability
+of each possible value for some purpose.  E.g., we might describe room temperature as a symmetrical triangular function
+on (68, 76)°F or (20, 24)°C.  In this way, we might state our opinions as "preference curves".  Notice how the fuzzy
+number includes information about the ideal (the maximum), our tolerance for its variation (the width) and the limits
+of what we will accept (the support, or non-zero domain).
+
+We might also represent empirical knowledge as fuzzy numbers.  E.g., sensory dissonance vs. interval is a highly
+structured function with many peaks and valleys across a wide domain, but all of this information can be encapsulated
 in a single :class:`Value` object.
 
+Fuzzy solutions to complex problems can look much like the crisp solutions.  Suppose a model is described by crisp
+equations.  When the operators of those equations are made fuzzy, and the independent variables can be fuzzy, every
+contingency can be planned for, and every subtle effect can be taken into account.
+
+Fuzzy solutions can also use the dimension of truth and suitability---the certainty, strength, likelihood,
+desirability of the inputs and our opinions about the goodness of the outputs are encoded in the numbers.
+This gives meaning to logical operations between variables.  Suppose your opinion on room temperature
+is different that mine---we can combine them by ANDing them together to find a compromise.  Enrich the model
+with equations for energy prices, budget concerns, expected temperatures, time spent in the building, etc.,
+and we can automate our argument about the thermostat.
+
+Make all the natural-language statements you can about a system, its problems and heuristics.  They are already
+very close to fuzzy statements, and are easily converted.  Your knowledge of a domain can easily become a very
+sophisticated computer program automating your own judgment.
+
+How to Use It
+-------------
+
+There are two domains in play.  There is the familiar world of absolute truths and precise numbers that we will
+call "crisp".  There is also the world of partial truths and indefinite numbers that we will call "fuzzy".
+In the fuzzy domain, the vagueness is measured with precision, so we can compute with it.  The intricacies happen
+largely out of sight, so our calculations and reasoning retain their familiar form.  The main differences are:
+
+    * We enter the fuzzy domain by defining fuzzy numbers, usually by intuitive parameters; or, by using informative
+      functions about quantities varying between established limits *as* fuzzy numbers.
+    * Within the fuzzy domain, we can use not only the familiar arithmetic operators in the usual way, but we can also
+      combine numbers with the logical operators (and, or, not, and so on) to compute statements of reasoning.
+    * The notion of weighting terms in a equation still exists, in two forms: trinary (by :meth:`.Value.weight`) and
+      binary (by :meth:`.Value.focus`).
+    * We reenter the crisp domain by the method :meth:`crisp`, to render a :class:`.Value` as a single float; or, by
+      mapping the suitability of the fuzzy number to an output variable.  (All right.  I use "crisp" as a verb
+      because the usual word, "defuzzify", is impossibly ugly.)
+
+One may state one's ideas in the usual way, translate the statements into algorithms using logic and math operators
+(overloaded to be fuzzy), plug in fuzzy numbers to the inputs, receive the fuzzy outputs, crisp them if desired, and
+judge their quality by the indicated suitability of the results.
+
+The :mod:`value` module is designed to work with the :mod:`truth` module and has some basic functionality provided
+by the :mod:`norm` module.  Just as :class:`Truth` objects are analogous to ``bool``, :class:`Value` objects
+are analogous to ``float``.
+
+The abstract class :class:`.Value` provides the method:
+
+    * :meth:`.Value.crisp`,
+
+and guarantees the provision of:
+
+    * :meth:`.Value.suitability`, and
+    * :meth:`.Value.evaluate`.
+
+The :meth:`.Value.crisp` method *defuzzifies* a fuzzy number, resulting in a crisp number, in our case
+a single `float`.  It is usually used at the end of an algorithm, to produce a final result.  (Consider, though,
+that the function of suitability vs. value that represents a fuzzy number might be more useful to you if you map
+the suitability to some output variable.)  Since there are many opinions about how best to perform defuzzification,
+this is handled by the class :class:`Crisper` and its descendants.  One may indicate a choice in the call or rely
+on a global default.
+
+The :meth:`.Value.suitability` method returns the suitability (the "truth" on [0,1]) of a given value (any real
+number).  This is most useful for determining the goodness of a crisp result.  It may also be used by mapping the
+suitability to an output variable, therefore mapping one value to another by a function determined by a fuzzy
+reasoning process.  E.g., we may combine fuzzy information about sound spectra, dissonance, and plausible melodic
+motions to calculate the frequency response of a filter.
+
+The :meth:`.Value.evaluate` method returns a numerical representation of any :class:`Value` object, given a required
+resolution.  This is used internally and probably won't be needed by end-users, unless they want a fuzzy result.
+The purpose is to allow fuzzy numbers to be described by precise, analytical expressions.  When needed for calculation
+(the algorithms for most arithmetic operators are numerical), they are called up in the required form.  Since all
+of the operators are also of type :class:`Value` (in the sense that their result is a :class:`.Value`), and since
+they hold their operands, which are also :class:`Value` objects, an expression builds up a tree of objects.
+When the root is asked to evaluate itself, it asks its operands, and so on, resulting in a cascade of recursive calls
+sending numerical representations of operands up the tree to the root.  Most often this is done by the call
+to :meth:`.Value.crisp`.  In any case, users never see the underlying complexity.
+
+These numerical representations have a standard form in the class :class:`Numerical`.  It represents a fit-valued
+function over three domains, in order of decreasing priority:
+
+* A set of exceptional points, discrete :math:`(v,s)` pairs.
+* A continuous function, :math:`s(v)`, over a given domain, represented by an array of uniformly-spaced values and an
+  array of corresponding suitabilities.  Calls requesting a suitability may, therefore, require interpolation, so there
+  is a system of selectable interpolators like the ones for :class:`.Norm`, and :class:`.Crisper`,
+* A default suitability (usually 0) to be reported for values not included in the above continuous or discrete domains.
+
+The class also includes an :meth:`.impose_domain` method in case one needs to impose an extreme domain on a result,
+e.g., if values outside a certain range are nonsensical.
+
+TODO: I need to be able to apply the .to_float method from Truth to Numericals
+---some kind of convenient mapping function.
+
+What happens when :meth:`.Value.evaluate` calls reach the "leaves" of the expression "tree"?  What are they?
+They are input variables holding well-defined fuzzy numbers.  There are several classes for creating these
+"literals" by intuitive parameters.
+described by
+
+* Methods for defining fuzzy numbers parametrically:
+
+    * :class:`.Triangle`
+    * :class:`.Trapezoid`
+    * :class:`.Cauchy`
+    * :class:`.Gauss`
+    * :class:`.Bell`
+    * :class:`.DPoints`
+    * :class:`.CPoints`
+    * :class:`.Exactly` TODO: Exactly!
+
+
+Most of these are subclasses of the abstract class , which provides the apparatus for declaring the
+
+(:class:`.DPoints` is an exception---it is a subclass of :class:`.Numerical`)
+
+Subclassing important functions: analytical Numpy function in the _sample method.
+
+
+    All of these, except for  , subclass the abstract :class:
+
+* Three basic logical connectives (the underscores are to difference them from Python keywords; the overloaded
+  operators are rubricated as code; truth tables are shown in brackets):
+
+    * :meth:`.Truth.not_` (¬, ``~``) [10],
+    * :meth:`.Truth.and_` (∧, ``&``) [0001], and
+    * :meth:`.Truth.or_` (∨, ``|``) [0111].
+
+* The other eight non-trivial logical connectives familiar from propositional calculus and electronic logic
+  gates:
+
+    * :meth:`.imp` (→, "implies", ``>>``) [1101],
+    * :meth:`.con` (←, *converse*, ``<<``) [1011],
+    * :meth:`.iff` (↔, *equivalence*, "if and only if", "xnor", ``~(a @ b)``) [1001], and its inverse---
+    * :meth:`.xor` (⨁, *exclusive or*, ``@``) [0110]; and the other inverses:
+    * :meth:`.nand` (↑, non-conjunction, ``~(a & b)``) [1110],
+    * :meth:`.nor` (↓, non-disjunction, ``~(a | b)``) [1000],
+    * :meth:`.nimp` (:math:`\\nrightarrow`, non-implication, ``~(a >> b)``) [0010], and
+    * :meth:`.ncon` (:math:`\\nleftarrow`, non-converse implication, ``~(a << b)``) [0100].
+
+  All eleven logical connective methods can be defined by a :class:`Norm` optionally given in the call;
+  otherwise, they use the :attr:`fuzzy.norm.global_norm` by default.
+
+* The six comparisons: ``<``, ``>`` , ``<=``, ``>=``, ``==``, ``!=``.
+
+* Methods, for emphasizing or deëmphasizing the contribution of a truth to whatever expression
+  it is in---equivalent to partially defuzzifying or refuzzifying it.
+
+    * :meth:`.weight`
+    * :meth:`.focus`
+
+
+* Two methods for making final decisions---"defuzzifying" the *fuzzy* :class:`Value` to a *crisp* ``float``:
+
+    * :meth:`.Value.crisp`, which allows the crisper to be given in the call, or
+    * :func:`.float`, which refers to a global default:  :attr:`.Value.global_crisper`.
+
+* "Crispers"---classes that implement defuzzification routines:
+
+* Interpolator, a class for implementing the interpolation routines needed for some descriptions.
+
+
+
+How It Works
+------------
+
+
+
 and...
+"literals" defining a value go here: Triangle, Trapezoid, Cauchy, Gauss, Bell, DPoints, CPoints:
+Practical fuzzy numbers representing real things, e.g., Dissonance,
+are probably descended from Literal (if generally continuous) or Numerical (if discrete and non-uniform).
 
 """
 
 # Here are the classes for fuzzy value and arithmetic:
 # Value --- base class;  Numerical --- "working" class of evaluation and defuzzification;
-# Triangle, Trapezoid, Bell, Cauchy, Gauss, Points --- "atoms" defining a value;
-# ValueNot, ValueAnd, ValueOr --- logic on values;
-# Sum, Difference, Prod, Quotient, Focus, Abs, Inverse --- arithmetic on values.
+# "literals" defining a value go here: Triangle, Trapezoid, Cauchy, Gauss, Bell, DPoints, CPoints;
+# logic on Values:  the same ops as for Truth
+# arithmetic on Values: Sum, Difference, Prod, Quotient, Focus, Abs, Inverse, Negative
+# Overloaded operators
+# Interpolators and Crispers
 
 from __future__ import annotations
 
@@ -256,7 +428,10 @@ class Numerical(Value):
         return self
 
     def impose_domain(self, imposed_domain: (float, float)) -> Numerical:
-        """Returns a copy of ``self``without exceptional points or continuous domain outside ``imposed_domain``."""
+        """Returns a copy of ``self``without exceptional points or continuous domain outside ``imposed_domain``.
+
+        Caution:
+            This doesn't change ds.  Should it?  How do you avoid trouble?"""
         if self.d is None:
             d = None
         else:
@@ -288,33 +463,12 @@ class Numerical(Value):
         return trimmed
 
 
-# # Triangle, Trapezoid, Bell, Cauchy, Gauss, DPoints, CPoints --- "atoms" defining a value;
-# # ValueNot, ValueAnd, ValueOr --- logic on values;
-# # Sum, Difference, Prod, Quotient, Focus, Abs, Inverse --- arithmetic on values.
+# "literals" defining a value go here: Triangle, Trapezoid, Cauchy, Gauss, Bell, DPoints, CPoints:
+# Practical fuzzy numbers representing real things, e.g., Dissonance,
+# are probably descended from Literal (if generally continuous) or Numerical (if discrete and non-uniform).
 
 
-class DPoints(Numerical):
-    """A fuzzy number defined as singular points---discrete (v,s) pairs."""
-
-    def __init__(self, singular_points: Iterable[Tuple[float, float]],
-                 scale: Tuple[float, float] = None, default_suitability: float = 0) -> None:
-        """
-        Args:
-            points:  A collection of (*value*, *suitability*) pairs.  All *values* must be unique
-                and all *suitabilities* must be on [0,1].
-            scale:  If defined, the range of ``points`` is linearly scaled to ``scale``, taken as (*min*, *max*).
-                If *min*>*max*, the sense of the suitabilities is flipped.
-                If *min*==*max*, all suitabilities are the average of *min* and *max*.
-            default_suitability:  The suitability outside the defined domain, defaults to 0.
-            """
-        p = np.array(singular_points)
-        if scale is not None:
-            p = Value._scale(p, scale)
-        super().__init__(resolution=Value.default_resolution, domain=None,
-                         points=p, default_suitability=default_suitability)
-
-
-class Atom(Value):
+class Literal(Value):
     """The ancestor of classes which describe single fuzzy numbers as continuous functions which may be discretized.
     Much of the initialization is handled here.  This is an effectively abstract class.
 
@@ -389,7 +543,7 @@ class Atom(Value):
                 return self._sample(np.array([v]))[0]
 
 
-class Triangle(Atom):
+class Triangle(Literal):
     """Describes a fuzzy number as a triangular function with a peak (maximum s) and extreme limits (s==0)"""
 
     def __init__(self, a: float, b: float, c: float,
@@ -428,7 +582,7 @@ class Triangle(Atom):
         return s
 
 
-class CPoints(Atom):
+class CPoints(Literal):
     """A fuzzy number defined as knots for interpolation---(v,s) pairs.
 
     The resulting function may be taken as continuous or defined only at uniformly spaced points."""
@@ -469,4 +623,33 @@ class CPoints(Atom):
         """Returns the suitability for every value in ``v``."""
         return self.interp.interpolate(v, self.points_v, self.points_s)
 
-# USA: balance, Labcorps, kroger: ?, commit-push, Anthelion, Jangwa
+
+class DPoints(Numerical):
+    """A fuzzy number defined as singular points---discrete (v,s) pairs."""
+
+    def __init__(self, singular_points: Iterable[Tuple[float, float]],
+                 scale: Tuple[float, float] = None, default_suitability: float = 0) -> None:
+        """
+        Args:
+            points:  A collection of (*value*, *suitability*) pairs.  All *values* must be unique
+                and all *suitabilities* must be on [0,1].
+            scale:  If defined, the range of ``points`` is linearly scaled to ``scale``, taken as (*min*, *max*).
+                If *min*>*max*, the sense of the suitabilities is flipped.
+                If *min*==*max*, all suitabilities are the average of *min* and *max*.
+            default_suitability:  The suitability outside the defined domain, defaults to 0.
+            """
+        p = np.array(singular_points)
+        if scale is not None:
+            p = Value._scale(p, scale)
+        super().__init__(resolution=Value.default_resolution, domain=None,
+                         points=p, default_suitability=default_suitability)
+
+
+
+# # Triangle, Trapezoid, Cauchy, Gauss, Bell, DPoints, CPoints --- "literals" defining a value;
+# # ValueNot, ValueAnd, ValueOr --- logic on values;
+# # Sum, Difference, Prod, Quotient, Focus, Abs, Inverse, Negative --- arithmetic on values.
+
+# doc; Trapezoid, Cauchy, Gauss, Bell; interps; logic ops; arithmetic ops; overloads; crispers; review; test; parser
+
+

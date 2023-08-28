@@ -46,7 +46,7 @@ The class provides many methods and overloaded operators for working with logic:
 * Two methods for making final decisions---"defuzzifying" the *fuzzy* :class:`Truth` to a *crisp* ``bool``
   by comparing it to a threshold:
 
-    * :meth:`.crisp`, which allows the threshold to be given in the call, or
+    * :meth:`.Truth.crisp`, which allows the threshold to be given in the call, or
     * :func:`.bool`, which refers to a global default:  :attr:`.Truth.global_threshold`.
 
   (Consider, though:  the best solution to your problem mightn't be crisp,
