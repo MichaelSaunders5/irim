@@ -1,4 +1,4 @@
-"""All the facilities for working with fuzzy logic and arithmetic.
+"""provides all the facilities for working with fuzzy logic and arithmetic.
 
 .. epigraph::
 
@@ -58,7 +58,7 @@ How to Use the Package
 There are two ways:
 
 * The hard way: create a :class:`.Norm` object and use its functions as logic and arithmetic operators.
-* The easy way: set the :attr:`global_norm` and :attr:`global_defuzzifier`  (if you aren't happy with the defaults)
+* The easy way: set the :attr:`default_norm` and :attr:`global_defuzzifier`  (if you aren't happy with the defaults)
   and use overloaded operators on :class:`.Truth` and :class:`.Value` objects.
 
 The hard way
@@ -92,4 +92,4 @@ very well?
 
 overviews of the three families ...
 """
-__all__ = ["norm", "truth", "value"]
+__all__ = ["norm", "truth", "value", "crisp"]

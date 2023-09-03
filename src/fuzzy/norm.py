@@ -1,6 +1,9 @@
-"""Norms define the fundamental fuzzy operators (t-norms and co-norms) and perform their calculations.
+"""defines the fundamental fuzzy operators.
 
-Don't worry if you aren't familiar with these terms;  the default is probably all you will ever need.
+The fundamental fuzzy operators are *t-norms* and *co-norms*.
+Don't worry if you aren't familiar with these terms.  You don't need to choose a particular norm---the default
+is probably all you will ever need.  The :class:`Norm` classes perform all the calculations
+
 
 The abstract class :class:`Norm` provides the method:
 
@@ -43,7 +46,7 @@ or one based entirely on how "strict" you want it to be---that is, on how likely
 produce extreme results (falser ands and truer ors).
 
 Unless you want to switch between Norms often, however, it will be easiest to set the :mod:`fuzzy` module's
-:attr:`global_norm` attribute to the one you want (the default is :class:`Prod`).  The logical and mathematical
+:attr:`default_norm` attribute to the one you want (the default is :class:`Prod`).  The logical and mathematical
 operators of the :class:`.Truth` and :class:`.Value` classes refer to it for all their calculations.
 
 Most users will need only :class:`Truth` and  :class:`Value` objects, used as if they were ``bool`` and ``float``
@@ -528,7 +531,7 @@ class CompoundNorm(Norm):
 
 # noinspection PyAbstractClass
 class StrictnessNorm(Norm):
-    """Defines a norm of given strictness, on a scale from [-100,100] (hard limit).
+    """Defines a norm of given strictness, on a range from [-100,100] (hard limit).
 
     Arg:
         strictness: the tendency to extreme values---**and** more false and **or** more true.
@@ -573,5 +576,5 @@ class StrictnessNorm(Norm):
 
 # It would be nice to put this module variable at the top of the file:
 
-global_norm = Norm.define(norm="pp")  # The default Prod t-norm is probably all you need.
+default_norm = Norm.define(norm="pp")  # The default Prod t-norm is probably all you need.
 """The Norm used by operators as a default, and by all overloaded operators."""

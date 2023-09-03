@@ -1,9 +1,9 @@
-"""A fuzzy Truth represents a *degree of truth*, from perfect falsehood (0),
-to absolute truth (1) or anything in-between.
+"""provides logical operators for *degrees of truth*.
 
-A :class:`Truth` object is essentially an immutable ``float`` presumed to be on [0,1].  It may be used to describe
-the truth of a proposition, the strength of an opinion, the certainty of a fact, the preference for a choice,
-or any other measured quantity of physical or mental reality that might vary between established limits.
+A :class:`Truth` object is essentially an immutable ``float`` presumed to be on [0,1]---0 is false, 1 is true, and
+the intermediate values indicate partial truth.  It may be used to describe the truth of a proposition, the strength
+of an opinion, the certainty of a fact, the preference for a choice, or any other measured quantity of physical
+or mental reality that might vary between established limits.
 
 The class provides many methods and overloaded operators for working with logic:
 
@@ -37,7 +37,7 @@ The class provides many methods and overloaded operators for working with logic:
     * :meth:`.ncon` (:math:`\\nleftarrow`, non-converse implication, ``~(a << b)``) [0100].
 
   All eleven logical connective methods can be defined by a :class:`Norm` optionally given in the call;
-  otherwise, they use the :attr:`fuzzy.norm.global_norm` by default.
+  otherwise, they use the :attr:`fuzzy.norm.default_norm` by default.
 
 * The six comparisons: ``<``, ``>`` , ``<=``, ``>=``, ``==``, ``!=``.
 
@@ -47,7 +47,7 @@ The class provides many methods and overloaded operators for working with logic:
   by comparing it to a threshold:
 
     * :meth:`.Truth.crisp`, which allows the threshold to be given in the call, or
-    * :func:`.bool`, which refers to a global default:  :attr:`.Truth.global_threshold`.
+    * :func:`.bool`, which refers to a global default:  :attr:`.Truth.default_threshold`.
 
   (Consider, though:  the best solution to your problem mightn't be crisp,
   but a variable mapped from the nuanced, ineffably beautiful, fuzzy truth.)
@@ -97,12 +97,12 @@ Caution:
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from math import log, exp
+from math import log, log1p, exp
 from typing import Union, ClassVar, Tuple
 
 import numpy as np
 
-from fuzzy.norm import Norm, global_norm
+from fuzzy.norm import Norm, default_norm
 
 
 @dataclass
@@ -112,22 +112,138 @@ class Truth(float):
     Operand = Union[float, np.ndarray, int, bool, 'Truth']
     """A type indicating {:class:`Truth` | ``float`` | ``int`` | ``bool`` | :class:`numpy.ndarray`}.  
     Arrays are intended for private use by :class:`Value`.  The range of values is presumed to be on [0,1]."""
-    global_threshold: ClassVar[float] = .5
+    default_threshold: ClassVar[float] = .5
     """The default threshold for defuzzification, used by :meth:`crisp` and ``bool()``.   It is also 
     the point of inflection for the :meth:`weight` method, and the default value for ``Truth`` objects.  
     It should be what you consider as exactly "maybe".  It may be set directly.  
     I like the intuitive default of .5 because it gives equal scope and resolution to either side of "maybe"."""
-    s: float = field(default=global_threshold)
+    s: float = field(default=default_threshold)
 
     # The methods that deal with getting and setting:
 
+    @classmethod
+    def scale(cls, x: Operand = None, dir: str = "in", r: Tuple[float, float] = None,
+              map: str = "lin", clip: bool = False) -> Operand:
+        """A helper function to map between external variables and fuzzy units.
+
+        In general, a complete workflow might resemble the following:
+
+            #. You have a crisp variable, in some units, on a range of real numbers.
+            #. You map its range (expected or actual) to fuzzy units, [0,1].
+            #. You do fuzzy reasoning and calculation with it.
+            #. Finally, you translate the result from fuzzy units back into crisp units by a mapping
+               that inverts the original one.
+
+        Of course, the first two steps might well be imaginary.
+
+        Args:
+            x: A number (or an array of them) to be mapped from one range to another.
+            dir: The direction of the mapping, in to or out of fuzzy units.
+
+                * ``"in"`` maps the given range, ``r``, onto the *fit* range, [0,1].
+                * ``"out"`` maps the *fit* range, [0,1], onto the given range, ``r``.
+
+            r: The expected input or desired output range, as a tuple, (min, max).  Its width, max-min,
+                presents special concerns.  There are three modes:
+
+                Output (``dir="out"``):
+                    The range must be declared and have some non-zero width or an exception will be raised.
+
+                Input: (``dir="in"``, ``r`` declared):
+                    If the range has zero width, three results are possible:
+
+                        * x<r:  -∞
+                        * x=r:  :attr:`.default_threshold`,
+                        * x>r:  ∞
+
+                    If ``clip`` is ``True`` this becomes {0, :attr:`.default_threshold`, 1}.
+
+                Automatic Input: : ``dir="in"``, ``r`` not declared (``= None``):
+                    The range is set to the actual range found in ``x``, so the input is normalized to fill [0,1].
+                    If ``x`` does not vary (e.g., if it is a single float), the result is :attr:`.default_threshold`.
+
+                In any mode:
+                    In normal operation, the width of ``r`` is non-zero and positive.  If it is negative (min > max),
+                    then the sense of the input is flipped---higher numbers become lower.
+
+            map: There are three mappings:
+
+                * ``"exp"`` for exponential, ``"lin"`` for linear (the default), and ``"log"`` for logarithmic.
+                * "exp" and "log" are inverses of each other, "lin" of itself;
+                * ``"invexp"``, ``"invlin"``, and ``"invlog"`` are provided as mnemonics.
+
+                I.e., if a fuzzy variable was created by ``dir="in"``, ``map="log"``, and you want to recover its
+                original units, you would unmap it with ``dir="out"`` and ``map="exp"`` or ``map="invlog"``.
+
+                Why use anything other than linear?  In nature, many variables have non-linear characteristics.
+                By mapping them accordingly, you can preserve their significance and resolution across the range of the
+                fuzzy unit.  E.g., audio amplitude can be thought of as linear, but the human ear perceives it
+                logarithmically, hence the decibel.  If you mapped amplitude to a fuzzy unit linearly, the
+                difference between .8 and .9 would appear equal in significance to that between .1 and .2.
+                Perceptually, the latter is much more important than the former---most of the information is stuffed
+                into the bottom of the fuzzy unit.  So, in this case, it would be better to use a logarithmic
+                mapping---it would spread the information more evenly across [0,1].  (Exponential mapping is available
+                for variables that would be more significant on the higher end.)  When the differences in value are
+                in their proper proportion, fuzzy reasoning is more effective.
+
+            clip:  if ``True``, clipping prevents out-of-range results.
+
+        Returns:
+            A number (or an array of them), mapped onto the indicated range.
+
+        Caution:
+            * Input mode with a zero-width expected range doesn't make a lot of sense, but it produces the limit of
+              the usual behavior as the width approaches zero.  With clipping in use, this resembles trinary logic
+              and might be good for something.
+            * Automatic input mode can be risky:  if ``x`` is constant, the result, :attr:`.default_threshold`,
+              may be unexpected, but it makes some sense:  whatever ``x`` is, it's assumed to *be* "dead center",
+              instead of varying *about* dead center.
+            * Output mode without a well-defined, non-zero output range is meaningless.
+            * If you want to reverse a scaling, say by mapping in then out, remember that ``"log"`` and ``"exp"`` are
+              inverse operations of each other and ``lin`` is the inverse of itself.  Or, to avoid confusion, use
+              ``"log"`` with ``"invlog"`` and ``"exp"`` with ``"invexp"``.
+
+        Note:
+            * This method is used by :meth:`.Truth.__init__`, :meth:`.Truth.to_float`; :meth:`.Value.CPoints`,
+              :meth:`.Value.Dpoints`; and :class:`.Map`.
+            """
+        if x is None:
+            x = Truth.default_threshold
+        fl = (not isinstance(x, np.ndarray)) or (len(x) == 1)  # To return the same type given.
+        if dir == "in":  # map from an input variable on [min,max] to a fit representation on [0,1]:
+            if r[0] == r[1]:  # This is the limit of the behavior as the condition is approached, but why do it?:
+                x = Truth.default_threshold if (x == r[0]) else inf if (x > r[0]) else -inf
+            if r is None:
+                r[0], r[1] = np.min(x), np.max(x)  # Map the whole *used* range to [0,1]
+                if r[0] == r[1]:  # It works unless x doesn't vary, e.g., if it's just one float.
+                    x = Truth.default_threshold  # You asked for it, but did you expect it?
+            if (map == "lin") or (map == "invlin"):
+                x = (x - r[0]) / (r[1] - r[0])  # A
+            elif (map == "log") or (map == "invexp"):
+                x = log(1 + abs(x - r[0]), 1 + abs(r[1] - r[0]))  # B
+            else:  # "exp" or "invlog"
+                x = 2 ** ((r[0] - x) / (r[0] - r[1])) - 1  # C this does not reconstruct the log onto [0,1]
+        if clip:
+            x = Truth.clip(x)
+        if dir == "out":  # map from a fit representation on [0,1] to an output variable on [min,max]:
+            if (r is None) or (r[0] == r[1]):
+                raise ValueError("The output range, r, must be defined.")
+        if (map == "lin") or (map == "invlin"):
+            x = r[0] + (r[1] - r[0]) * x  # inv A
+        elif (map == "log") or (map == "invexp"):
+            x = r[0] + log1p(x) * (r[1] - r[0]) * 1.4426950408889634  # inv C (1/log(2))
+        else:  # "exp" or "invlog"
+            sign = 1 if (max > min) else -1
+            x = sign * (exp(x * log(1 + abs(r[1] - r[0]))) - 1) + r[0]  # inv B
+        return float(x) if fl else x
+
     def __init__(self, x: float = None, range: Tuple[float, float] = (0, 1),
-                 logarithmic: bool = False, clip: bool = False):
+                 map: str = "lin", clip: bool = False):
         """The usual initialization behavior is to simply set the ``self`` to the input, ``x``,
-        or to :attr:`global_threshold`, if no ``x`` input is given.
+        or to :attr:`default_threshold`, if no ``x`` input is given.
 
         The parameters allow for the mapping of the input onto [0,1] based on its extreme limits, ``range``,
-        and a mapping type, ``logarithmic``.  There is also an option ``clip``, to clip to [0,1] for safety
+        and a mapping type, ``map``.  There is also an option ``clip``, to clip to [0,1] for safety
         (in case ``x`` might fall outside ``range``).
 
         The inverse of this constructor is :meth:`to_float`, i.e.: ``x == Truth(x).to_float()`` as long as their other
@@ -135,50 +251,29 @@ class Truth(float):
 
         Args:
             x: an input number.
-            range: the expected range, [min,max], of the input.  The default is to expect a fuzzy unit.
-                If min>max, lower inputs produce truer results; if min==max, the result is a default :class:`Truth`
-                (i.e., equal to :attr:`.global_threshold`---a perfect maybe).
-            logarithmic: use logarithmic rather than the default linear mapping.
-            clip: clip the result to [0,1]---useful if the input might fall outside the expected range.
+
+        Other Parameters:
+            range, map, clip:  relate to mapping fuzzy units.  See :meth:`scale`.
 
         Return:
-            A :class:`Truth` object, the value of which is mapped onto [0,1] from the range [min,max] with optional
-            logarithmic mapping and clipping.
+            A :class:`Truth` object, with value on [0,1].
         """
-        if (x is None) or (range[0] == range[1]):
-            x = Truth.global_threshold
-        if logarithmic:
-            self.s = log(1 + abs(x - range[0]), 1 + abs(range[1] - range[0]))
-        else:
-            self.s = (x - range[0]) / (range[1] - range[0])
-        if clip:
-            self.s = Truth.clip(self.s)
+        self.s = Truth.scale(x, "in", range, map, clip)
 
-    def to_float(self, range: Tuple[float, float] = (0, 1), exponential: bool = False) -> float:
-        """Map ``self``'s value from [0,1] to [min,max].
+    def to_float(self, range: Tuple[float, float] = (0, 1), map: str = "lin", clip: bool = False) -> float:
+        """Map ``self``'s value from [0,1] to a given range.
 
-        It is the inverse of the :class:`Truth`: constructor.  When called with similar arguments
-        (the same ``range``, ``logarithmic == exponential``), it will reproduce the input that initialized
+        This is the inverse of the :class:`Truth` constructor.  When called with similar arguments
+        (the same ``range`` and complementary ``map``), it will reproduce the input that initialized
         the :class:`Truth`, unless clipping was necessary, i.e., ``x == Truth(x).to_float()``.
 
-        Args:
-            range: the desired extreme range, [min,max], of the output.
-                If min>max, truer truths produce lower results; if min==max, that is the result.
-            exponential: use exponential rather than the default linear mapping.  This is needed if
-                logarithmic mapping was used in the constructor.
+        Other Parameters:
+            range, map, clip:  relate to mapping fuzzy units.  See :meth:`scale`.
 
 
         Return:
-            A number mapped onto the range [min,max] from the :class:`Truth`'s value."""
-        sign = 1
-        if range[0] == range[1]:
-            return range[0]
-        elif range[0] > range[1]:
-            sign = -1
-        if exponential:
-            return sign * (exp(self.s * log(1 + abs(range[1] - range[0]))) - 1) + range[0]
-        else:
-            return self.s * (range[1] - range[0]) + range[0]
+            A number mapped onto the given range from the :class:`Truth`'s value."""
+        return Truth.scale(self.s, "out", range, map, clip)
 
     @staticmethod
     def is_valid(s: Operand) -> bool:
@@ -213,14 +308,14 @@ class Truth(float):
         It may be accessed by ``s.not_()`` or ``~s``.
 
         Arg:
-            norm: an optional norm.  The default is :attr:`Norm.global_norm`
+            norm: an optional norm.  The default is :attr:`Norm.default_norm`
 
         Returns:
             The opposite of ``self``, the extent to which ``self`` is false."""
         # This will probably always be the standard fuzzy negation: 1 - self.s, but I refer to the norm
         # for consistency, and in case one chooses to implement non-standard negations.
         if norm is None:
-            norm = global_norm
+            norm = default_norm
         return Truth(norm.not_(self.s))
 
     # Ten binary operators:---
@@ -245,7 +340,7 @@ class Truth(float):
     # since that functionality is a little different.
     # In Python ^ is bitwise xor, but I'm not using it here because I'll need it for the sharpening (focus) operator.
 
-    # First, the basic functions that provide the calculation via the `global_norm`:
+    # First, the basic functions that provide the calculation via the `default_norm`:
     # and_, or_, imp_, con_, iff_, xor_;  nand_, nor_, nimp_, ncon_:
 
     def and_(self, *other: Operand, norm: Norm = None) -> Truth:
@@ -256,7 +351,7 @@ class Truth(float):
 
         Args:
             other: zero or more :attr:`Operand`, since the operation is associative.
-            norm: an optional norm.  The default is :attr:`Norm.global_norm`
+            norm: an optional norm.  The default is :attr:`Norm.default_norm`
 
         Returns:
             The conjunction of ``self`` and ``other``, the extent to which they are both true
@@ -265,7 +360,7 @@ class Truth(float):
             norm = other[-1]
             other = other[0:-1]
         if norm is None:
-            norm = global_norm
+            norm = default_norm
         return Truth(norm.and_(self.s, *other))
 
     def or_(self, *other: Operand, norm: Norm = None) -> Truth:
@@ -276,7 +371,7 @@ class Truth(float):
 
         Args:
             other: zero or more :attr:`Operand`, since the operation is associative.
-            norm: an optional norm.  The default is :attr:`Norm.global_norm`
+            norm: an optional norm.  The default is :attr:`Norm.default_norm`
 
         Returns:
             The disjunction of ``self`` and ``other``, the extent to which either or both is true
@@ -285,7 +380,7 @@ class Truth(float):
             norm = other[-1]
             other = other[0:-1]
         if norm is None:
-            norm = global_norm
+            norm = default_norm
         return Truth(norm.or_(self.s, *other))
 
     def imp(self, other: Operand, norm: Norm = None) -> Truth:
@@ -296,12 +391,12 @@ class Truth(float):
 
         Args:
             other: one :attr:`Operand`, since the operation is binary.
-            norm: an optional norm.  The default is :attr:`Norm.global_norm`
+            norm: an optional norm.  The default is :attr:`Norm.default_norm`
 
         Returns:
             The implication of ``self`` to ``other``, the extent to which ``self`` must result in ``other``."""
         if norm is None:
-            norm = global_norm
+            norm = default_norm
         return Truth(norm.or_(norm.not_(self.s), other.s))
 
     def con(self, other: Operand, norm: Norm = None) -> Truth:
@@ -312,13 +407,13 @@ class Truth(float):
 
         Args:
             other: one :attr:`Operand`, since the operation is binary.
-            norm: an optional norm.  The default is :attr:`Norm.global_norm`
+            norm: an optional norm.  The default is :attr:`Norm.default_norm`
 
         Returns:
             The implication of ``other`` to ``self``,
             the extent to which ``other`` must indicate that ``self`` was true."""
         if norm is None:
-            norm = global_norm
+            norm = default_norm
         return Truth(norm.or_(self.s, norm.not_(other.s)))
 
     def iff(self, other: Operand, norm: Norm = None) -> Truth:
@@ -332,13 +427,13 @@ class Truth(float):
 
         Args:
             other: one :attr:`Operand`, since the operation is binary.
-            norm: an optional norm.  The default is :attr:`Norm.global_norm`
+            norm: an optional norm.  The default is :attr:`Norm.default_norm`
 
         Returns:
             The equivalence of ``self`` and ``other``, the extent to which they have the same degree of truth,
             the extent to which they occur together but not apart."""
         if norm is None:
-            norm = global_norm
+            norm = default_norm
         return Truth(norm.or_(norm.and_(self.s, other.s), norm.and_(norm.not_(self.s), norm.not_(other.s))))
 
     def xor(self, other: Operand, norm: Norm = None) -> Truth:
@@ -352,13 +447,13 @@ class Truth(float):
 
         Args:
             other: one :attr:`Operand`, since the operation is binary.
-            norm: an optional norm.  The default is :attr:`Norm.global_norm`
+            norm: an optional norm.  The default is :attr:`Norm.default_norm`
 
         Returns:
             The non-equivalence of ``self`` and ``other``, the extent to which their degrees of truth differ,
             the extent to which they occur apart but not together."""
         if norm is None:
-            norm = global_norm
+            norm = default_norm
         return Truth(norm.and_(norm.or_(self.s, other.s), norm.not_(norm.and_(self.s, other.s))))
 
     def nand(self, other: Operand, norm: Norm = None) -> Truth:
@@ -369,12 +464,12 @@ class Truth(float):
 
         Args:
             other: one :attr:`Operand`, since the operation is binary.
-            norm: an optional norm.  The default is :attr:`Norm.global_norm`
+            norm: an optional norm.  The default is :attr:`Norm.default_norm`
 
         Returns:
             The inverse conjunction of `self` and ``other``, the extent to which they are not both true."""
         if norm is None:
-            norm = global_norm
+            norm = default_norm
         return Truth(norm.not_(norm.and_(self.s, other.s)))
 
     def nor(self, other: Operand, norm: Norm = None) -> Truth:
@@ -385,12 +480,12 @@ class Truth(float):
 
         Args:
             other: one :attr:`Operand`, since the operation is binary.
-            norm: an optional norm.  The default is :attr:`Norm.global_norm`
+            norm: an optional norm.  The default is :attr:`Norm.default_norm`
 
         Returns:
             The inverse disjunction of ``self`` and ``other``, the extent to which both are false."""
         if norm is None:
-            norm = global_norm
+            norm = default_norm
         return Truth(norm.not_(norm.or_(self.s, other.s)))
 
     def nimp(self, other: Operand, norm: Norm = None) -> Truth:
@@ -403,13 +498,13 @@ class Truth(float):
 
         Args:
             other: one :attr:`Operand`, since the operation is binary.
-            norm: an optional norm.  The default is :attr:`Norm.global_norm`
+            norm: an optional norm.  The default is :attr:`Norm.default_norm`
 
         Returns:
             The nonimplication of ``self`` to ``other``; the extent to which ``self`` suppresses or inhibits ``other``;
             the extent to which the presence of ``self`` indicates that ``other`` will not occur."""
         if norm is None:
-            norm = global_norm
+            norm = default_norm
         return Truth(norm.and_(self.s, norm.not_(other.s)))
 
     def ncon(self, other: Operand, norm: Norm = None) -> Truth:
@@ -421,13 +516,13 @@ class Truth(float):
 
         Args:
             other: one :attr:`Operand`, since the operation is binary.
-            norm: an optional norm.  The default is :attr:`Norm.global_norm`
+            norm: an optional norm.  The default is :attr:`Norm.default_norm`
 
         Returns:
             The non-implication of ``other`` to ``self``,
             the extent to which ``other`` indicates that ``self`` was false."""
         if norm is None:
-            norm = global_norm
+            norm = default_norm
         return Truth(norm.and_(norm.not_(self.s), other.s))
 
     # One more binary operator peculiar to fuzzy technique:  weight:
@@ -440,9 +535,9 @@ class Truth(float):
 
         Use if you want to modify a truth's contribution to whatever expression it's in.
         It applies a sigmoid transfer function to the truth's value.
-        If the parameter, ``w``, is negative (de-emphasis), results tend to the :attr:`global_threshold`.
+        If the parameter, ``w``, is negative (de-emphasis), results tend to the :attr:`default_threshold`.
         If it is positive (emphasis), they tend to 0 or 1, depending which side of the threshold they are on.
-        In any case, ``w==0`` does nothing; and, the input values {0, :attr:`global_threshold`, 1}
+        In any case, ``w==0`` does nothing; and, the input values {0, :attr:`default_threshold`, 1}
         are never transformed.  Note: as ``w`` approaches either infinity, the logic becomes trinary.
 
 
@@ -460,13 +555,13 @@ class Truth(float):
                 function (the same one that decides ``bool()``, except for the excluded middle).
 
                 If ``w==-100``, inputs on (.01, .99) yield outputs on (.49, .51)---only the outer 2% of inputs vary
-                beyond this.  The transfer function approaches a constant at :attr:`global_threshold`,
+                beyond this.  The transfer function approaches a constant at :attr:`default_threshold`,
                 with exceptional points when the input is 0 or 1.
 
                 The size of the "in play" region varies linearly with ``w``.  At ``w==50``, it has a width of .5,
                 that is, inputs on (.25, .75)---covering 50% of the input range---yield outputs on (.01, .99).
 
-                (All of the above assumes that :attr:`global_threshold`  ``==.5``.)
+                (All of the above assumes that :attr:`default_threshold`  ``==.5``.)
 
         Returns:
             The ``self`` emphasized (made more extreme, if ``w>0``) or deëmphasized (trending towards a "maybe",
@@ -481,7 +576,7 @@ class Truth(float):
               This is so :class:`.Truth`-valued expressions might conveniently be used as weights.
 
               """
-        th = .5 if Truth.global_threshold <= 0 or Truth.global_threshold >= 1 else Truth.global_threshold
+        th = .5 if Truth.default_threshold <= 0 or Truth.default_threshold >= 1 else Truth.default_threshold
         k = -3.912023005428146 / np.log(.0096 * abs(w) + .02)
         k = 1 / k if w < 0 else k
         if self.s <= th:
@@ -508,14 +603,14 @@ class Truth(float):
                 * The built-in function ``bool()`` has been overridden to yield the same result as :meth:`crisp`
                   called without a threshold."""
         if threshold is None:
-            threshold = Truth.global_threshold
+            threshold = Truth.default_threshold
         if self.s < threshold:
             return False
         else:
             return True
 
     def __bool__(self) -> bool:
-        """Crisps the ``Truth`` on the basis of the class's global threshold, :attr:`Truth.global_threshold`."""
+        """Crisps the ``Truth`` on the basis of the class's global threshold, :attr:`Truth.default_threshold`."""
         return Truth.crisp(self)
 
     # Operator symbol overrides:  these are for the most common operators that have a suitable overridable symbol:

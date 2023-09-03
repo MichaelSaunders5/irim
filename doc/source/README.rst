@@ -130,10 +130,9 @@ don't be alarmed by the jargon---this is a description of the programming job; t
 deal with are mostly familiar to musicians already.  Most of the code will be in Python, but the audio rendering
 will be done in Csound.
 
-    * First, as a warm-up, I'm building some of the mathematical infrastructure I need.  The largest item is
-      :py:mod:`fuzzy <irim.fuzzy>`,
-      a module for fuzzy logic and arithmetic.  If you are familiar with the subject, you might find that my
-      formulation of the arithmetic is a bit novel and, I hope, interesting.
+    * First, as a warm-up, I'm building some of the mathematical infrastructure I need.  The largest item
+      is :mod:`fuzzy`, a package for fuzzy logic and arithmetic.  If you are familiar with
+      the subject, you might find that my formulation of it is a bit novel and, I hope, interesting.
     * The first major section that must be built is the code that takes a text-based score and renders it as an
       audio file.  (A `prototype <http://odracam.us/index.php/about/the-software>`_, written entirely in Csound, may
       give you an idea of the basic functionality required.)  This is a problem with many parts:
