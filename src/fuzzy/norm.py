@@ -128,7 +128,7 @@ class Norm(ABC):
             | ``n.and_(.5,.5,.5)``
             | returns .125.
         """
-        # This can't be the __new__ method, since the instance returned is a subclass--infinte recursion would result.
+        # This can't be the __new__ method, since the instance returned is a subclass--infinite recursion would result.
         if kwargs is None:
             n = Prod()
         elif "norm" in kwargs:
@@ -251,7 +251,7 @@ class Norm(ABC):
         """A private definition of fuzzy logic AND-integral.
 
         Args:
-            z: an array of suitabilites (on [0,1]) vs. uniformly-spaced values
+            z: an array of suitabilities (on [0,1]) vs. uniformly-spaced values
             line_length: arclength of the line over which the definite integral is to be taken,
                 in units of sample intervals of the Cartesian product."""
 
@@ -260,7 +260,7 @@ class Norm(ABC):
         """A private definition of fuzzy logic OR-integral.
 
         Args:
-            z: an array of suitabilites (on [0,1]) vs. uniformly-spaced values
+            z: an array of suitabilities (on [0,1]) vs. uniformly-spaced values
             line_length: arclength of the line over which the definite integral is to be taken,
                 in units of sample intervals of the Cartesian product."""
 

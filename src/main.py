@@ -1,28 +1,7 @@
 # Here is where I am testing or playing around or something.
-
+import numpy as np
+import matplotlib.pyplot as plt
 from fuzzy.value import *
-
-# n = fzn.Norm.define()
-# alt_n = fzn.Norm.define(norm='ee')
-# # print(n.or_(.5, .5, .5))
-# # print(n.and_(.5, .5, .5))
-# a = Truth(.5)
-# b = Truth(.5)
-# c = 8
-# # print(n.and_(b, b, b))
-# # print(n.or_(b, b, b))
-# print(a.and_(b, a))
-# print(a.and_(b, .5))
-# print(a.or_(b, b))
-# print(a.or_(b, .5))
-# print(f"xor = {a.xor(b)}, nand = {a.nand(b)}, nor = {a.nor(b)}, nimp = {a.nimp(b)}, ncon = {a.ncon(b)}")
-# print(f"not_ = {a.not_()}")
-# print(f"a & b = {a & b}, a & .5 = {a & .5}, .5 & b = {.5 & b}")
-# print(f".5 & b, a = {a & a & .5}, ~~a = {~(a & b)}")
-
-# print(f"a + b = {a + b}, a - b = {a - b}, a ⨁ b = {a @ b}")
-# print(f"a default Truth = {Truth(0, logarithmic=True)}")
-# Truth.default_threshold = .8
 
 # f = Truth(.1)
 # mf = Truth(.4)
@@ -54,32 +33,42 @@ from fuzzy.value import *
 # print(f"0010 = {~(f >> f)}, {~(f >> t)}, {~(t >> f)}, {~(t >> t)}")
 # print(f"0100 = {~(f << f)}, {~(f << t)}, {~(t << f)}, {~(t << t)}")
 
-# print(f"weight of {f}: -100: {f^-10}, -50: {f^-5}, 0: {f^0}, 50: {f^5}, 100: {f^10}")
-# print(f"weight of {mf}: -100: {mf^-10}, -50: {mf^-5}, 0: {mf^0}, 50: {mf^5}, 100: {mf^10}")
-# print(f"weight of {m}: -100: {m^-10}, -50: {m^-5}, 0: {m^0}, 50: {m^5}, 100: {m^10}")
-# print(f"weight of {mt}: -100: {mt^-10}, -50: {mt^-5}, 0: {mt^0}, 50: {mt^5}, 100: {mt^10}")
-# print(f"weight of {t}: -100: {t^-10}, -50: {t^-5}, 0: {t^0}, 50: {t^5}, 100: {t^10}")
-# print(f"{.7^Truth()}")
+# TODO: test dp, cp, ;cont + xp?, trap cauchy gauss bell exactly. width/focus, logic, arith, outputs, crisp etc.
+# t = Triangle(0,5,10)
+# t = DPoints(((0,1),(2.5,.5),(5, 0),(7.5,.5),(10,0)))
+# Truth.default_threshold = .1
+# t = CPoints(((0,1),(2.5,.5),(5, 1),(7.5,.75),(10,0)), None)
+# t = Trapezoid(1, 3, 5, 9, (.4,.6))
+# t = Cauchy(5,2, (0,10))
+# t = Gauss(6,.1, 18)
+t = Bell(1,8,5)
 
-fxp = Triangle(0, 2.5, 5).evaluate(.5)
-te = Numerical(.1, (0, 4), points=np.array([[8., .9], [5., .5], [3., .5]]))
-td = Triangle(0, 2, 5, discrete=False, step=.5, origin=-.1)
-x = DPoints(((0, 0), (2, 0), (1, .8)))
-print(x.suitability(1))
-x = CPoints(((0, 0), (1, .8), (2, 0)), discrete=False)
-print(x.suitability(.5))
+# "linear" or "bary" or "krogh" or "pchip" or "akima":‘not-a-knot’, ‘periodic’, ‘clamped’, ‘natural’
+print(f"0: {t.suitability(0)}, 2.5: {t.suitability(2.5)}, 5: {t.suitability(5)}, 10: {t.suitability(10)}")
+fn = t.evaluate(.01)
+# # Here's a way to view fuzzy numbers (1D functions):
+plt.rcParams["figure.figsize"] = [7.50, 3.50]
+plt.rcParams["figure.autolayout"] = True
+plt.xlim(-1,11)     # domain to plot
+plt.ylim(-.1, 1.1)
+plt.grid()
 
-a = Triangle(0, 4, 8)
-b = Triangle(4, 8, 12)
-print(f">: {a > b},  >=: {a >= b},  ==: {a == b}")
-print(f"<: {a < b},  <=: {a <= b},  !=: {a != b}")
+v = fn.v       # [:, 0]
+s = fn.s       # [:, 1]
+plt.plot(v, s, color="red")
 
-my_map = a.map((-100, 100))
-print(f"{my_map(0)}, {my_map(2)}, {my_map(4)}, {my_map(6)}, {my_map(8)}, {my_map(-2)}, {my_map(10)}, ")
+if fn.xp is not None:
+    xpv = fn.xp[:, 0]
+    xps = fn.xp[:, 1]
+    plt.plot(xpv, xps, "o", markersize=5, color="blue")
+print(f"xp: {fn.xp}")
 
-# dp = DPoints(((1,0), (2,5), (3,10)), range=(0,10))
 
-print(f"xi: {Truth.clip(-inf)}, x01: {Truth.clip(inf)}, x: {Truth.clip(.5)}")
+plt.title("Line graph")
+
+
+plt.show()
+
 
 # #  This animates the norms (by strictness) for inspection.
 #

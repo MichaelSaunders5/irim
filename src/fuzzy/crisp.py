@@ -14,49 +14,91 @@ from abc import ABC, abstractmethod
 from typing import Tuple
 
 import numpy as np
+from scipy.interpolate import CubicSpline, barycentric_interpolate, \
+    krogh_interpolate, pchip_interpolate, Akima1DInterpolator
 
 from fuzzy.truth import Truth
 
 
-
 class Interpolator:
-    """Some interpolation routines and data indicating which to use and how."""
+    """Performs interpolations for arrays of points.
 
-    def __init__(self, **kwargs):
-        """Parameters for the :meth:`interpolate` method.
+    Instances hold the parameter.  The work is done in the :meth:`.interpolate` method."""
 
-        Kwargs:
-            ``key=value`` pairs in one of these combinations:
+    def __init__(self, kind: str = "linear"):
+        """Args:
+            kind: A string or tuple---((*left*), (*right*))---indicating the type of interpolation:
 
-            * type="linear": simple linear interpolation between adjacent knots.
+        +--------------------+-------------------------------------------------------------------+
+        |  ``kind=``         | note                                                              |
+        +====================+===================================================================+
+        | ``"linear"``       | linear                                                            |
+        +--------------------+-------------------------------------------------------------------+
+        | ``"akima"``        | due to Hiroshi Akima                                              |
+        +--------------------+-------------------------------------------------------------------+
+        | ``"bary"``         | barycentric                                                       |
+        +--------------------+-------------------------------------------------------------------+
+        | ``"krogh"``        | due to Fred T. Krogh                                              |
+        +--------------------+-------------------------------------------------------------------+
+        |  ``"pchip"``       | piecewise cubic Hermite interpolating polynomial                  |
+        +--------------------+-------------------------------------------------------------------+
+        |  cubic splines     |                                                                   |
+        +--------------------+-------------------------------------------------------------------+
+        | ``"not-a-knot"``   | Last two segments at each end are the same polynomial.            |
+        +--------------------+-------------------------------------------------------------------+
+        | ``"periodic"``     | The first and last suitabilities must be identical.               |
+        +--------------------+-------------------------------------------------------------------+
+        | ``"clamped"``      | ((1, 0), (1, 0))                                                  |
+        +--------------------+-------------------------------------------------------------------+
+        | ``"natural"``      | ((2, 0), (2, 0))                                                  |
+        +--------------------+-------------------------------------------------------------------+
+        | ``((a,b), (c,d))`` | (*left, right*): (*derivative order* {1,2}, *derivative value*)   |
+        +--------------------+-------------------------------------------------------------------+
+
+        For ``"linear"``,
+        see `Numpy <https://numpy.org/doc/stable/reference/generated/numpy.interp.html>`_.
+        For all others,
+        see `Scipy <https://docs.scipy.org/doc/scipy/reference/interpolate.html#univariate-interpolation>`_.
 
         """
-        if not kwargs:
-            kwargs = {'type': "linear"}
-        self.parameters = kwargs
+        if kind is None:
+            kind = "linear"
+        if (kind == "linear" or "bary" or "krogh" or "pchip" or "akima" or
+                "not-a-knot" or "periodic" or "clamped" or "natural") or isinstance(kind, tuple):
+            self.kind = kind
+        else:
+            raise NameError(f"{kind} isn't a type of interpolator")
 
     def interpolate(self, value: Union[np.ndarray, float], v: np.ndarray, s: np.ndarray) -> Union[np.ndarray, float]:
-        """Performs an interpolation based on ``self.parameters``.
+        """Interpolates to perform a numerical function.
+
+        The arrays ``v`` and ``s`` describe a function s(v).  In :class:`.Value.CPoints` this is used to construct
+        a function from a few data points.  In :meth:`.Value.Numerical.suitability` it is used to find suitabilities
+        for arbitrary values on the domain.
 
         Args:
-            v: The values for the knots taken as (v,s) pairs.
-            s: The suitabilities for the knots taken as (v,s) pairs.
+            v: The values for the knots.
+            s: The suitabilities for the knots.
             value: The v for which to obtain an interpolated s.
 
         Returns:
-            The interpolated suitability at
+            The suitabilities for the given ``value``\\ s.
         """
-        satv = 0
-        if self.parameters['type'] == "linear":
+        if self.kind == "linear":
             satv = np.interp(value, v, s)  # This is only linear.  Good enough?
-        # cs = CubicSpline(self.v, self.s, bc_type="not-a-knot", extrapolate=None)
-        # satv = cs(value)
-        # TODO: this is where the interpolation happens
+        elif self.kind == "bary":
+            satv = barycentric_interpolate(v, s, value)
+        elif self.kind == "krogh":
+            satv = krogh_interpolate(v, s, value)
+        elif self.kind == "pchip":
+            satv = pchip_interpolate(v, s, value)
+        elif self.kind == "akima":  # This gives me an anomalous Truth.default_threshold for value == d[1].  Why?
+            ai = Akima1DInterpolator(v, s)
+            satv = ai(value)
+        else:  # cubic, with ``kind`` giving boundary conditions:
+            cs = CubicSpline(v, s, bc_type=self.kind, extrapolate=True)
+            satv = cs(value)
         return satv
-
-
-default_interpolator = Interpolator(type="linear")
-"""The one to use, usually"""
 
 
 class Map:
@@ -119,7 +161,6 @@ class Map:
             The dependent variable.
         """
         return Truth(self.numerical.suitability(x, self.interp)).to_float(self.range, self.map, self.clip)
-
 
 
 class Crisper(ABC):

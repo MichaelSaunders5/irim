@@ -119,6 +119,13 @@ class Truth(float):
     I like the intuitive default of .5 because it gives equal scope and resolution to either side of "maybe"."""
     s: float = field(default=default_threshold)
 
+    # This works (maybe because it's a dataclass, but I've read that the following is normally necessary:
+    # class Foo(float):
+    #     def __new__(self, value, extra):
+    #         return float.__new__(self, value)
+    #     def __init__(self, value, ...):
+    #         float.__init__(value)
+
     # The methods that deal with getting and setting:
 
     @classmethod
@@ -211,16 +218,14 @@ class Truth(float):
             x = Truth.default_threshold
         fl = (not isinstance(x, np.ndarray)) or (len(x) == 1)  # To return the same type given.
         if dir == "in":  # map from an input variable on [min,max] to a fit representation on [0,1]:
+            if r is None:
+                r = (np.min(x), np.max(x))  # Map the whole *used* range to [0,1]
             if r[0] == r[1]:  # This is the limit of the behavior as the condition is approached, but why do it?:
                 x = Truth.default_threshold if (x == r[0]) else inf if (x > r[0]) else -inf
-            if r is None:
-                r[0], r[1] = np.min(x), np.max(x)  # Map the whole *used* range to [0,1]
-                if r[0] == r[1]:  # It works unless x doesn't vary, e.g., if it's just one float.
-                    x = Truth.default_threshold  # You asked for it, but did you expect it?
             if (map == "lin") or (map == "invlin"):
                 x = (x - r[0]) / (r[1] - r[0])  # A
             elif (map == "log") or (map == "invexp"):
-                x = log(1 + abs(x - r[0]), 1 + abs(r[1] - r[0]))  # B
+                x = np.log(1 + np.fabs(x - r[0])) / log(1 + abs(r[1] - r[0]))  # B
             else:  # "exp" or "invlog"
                 x = 2 ** ((r[0] - x) / (r[0] - r[1])) - 1  # C this does not reconstruct the log onto [0,1]
         if clip:
@@ -228,13 +233,13 @@ class Truth(float):
         if dir == "out":  # map from a fit representation on [0,1] to an output variable on [min,max]:
             if (r is None) or (r[0] == r[1]):
                 raise ValueError("The output range, r, must be defined.")
-        if (map == "lin") or (map == "invlin"):
-            x = r[0] + (r[1] - r[0]) * x  # inv A
-        elif (map == "log") or (map == "invexp"):
-            x = r[0] + log1p(x) * (r[1] - r[0]) * 1.4426950408889634  # inv C (1/log(2))
-        else:  # "exp" or "invlog"
-            sign = 1 if (max > min) else -1
-            x = sign * (exp(x * log(1 + abs(r[1] - r[0]))) - 1) + r[0]  # inv B
+            if (map == "lin") or (map == "invlin"):
+                x = r[0] + (r[1] - r[0]) * x  # inv A
+            elif (map == "log") or (map == "invexp"):
+                x = r[0] + np.log(1 + x) * (r[1] - r[0]) * 1.4426950408889634  # inv C (1/log(2))
+            else:  # "exp" or "invlog"
+                sign = 1 if (max > min) else -1
+                x = sign * (np.exp(x * log(1 + abs(r[1] - r[0]))) - 1) + r[0]  # inv B
         return float(x) if fl else x
 
     def __init__(self, x: float = None, range: Tuple[float, float] = (0, 1),
@@ -551,7 +556,7 @@ class Truth(float):
                 At ``w==0``, 98% of the input is in play:  inputs on (.01, .99) result in outputs on (.01, .99).
 
                 At the extremes, only 2% is in play.  E.g.:  if ``w==100``, only inputs on (.49, .51) yield outputs on
-                (.01, .99)---all other inputs yeild more extreme outputs and the transfer function approaches a step
+                (.01, .99)---all other inputs yield more extreme outputs and the transfer function approaches a step
                 function (the same one that decides ``bool()``, except for the excluded middle).
 
                 If ``w==-100``, inputs on (.01, .99) yield outputs on (.49, .51)---only the outer 2% of inputs vary
