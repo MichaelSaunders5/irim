@@ -38,15 +38,22 @@ from fuzzy.value import *
 # t = DPoints(((0,1),(2.5,.5),(5, 0),(7.5,.5),(10,0)))
 # Truth.default_threshold = .1
 # t = CPoints(((0,1),(2.5,.5),(5, 1),(7.5,.75),(10,0)), None)
-# t = Trapezoid(1, 3, 5, 9, (.4,.6))
+t = Trapezoid(1, 3, 5, 9)
 # t = Cauchy(5,2, (0,10))
 # t = Gauss(6,.1, 18)
-t = Bell(1,8,5)
+# a = Bell(4, 4, .5)
+# b = Bell(8, 4, .5)
+# t =  Sigmoid("<",5, 1, range=(.1,.3)
+a_function = Triangle(1, 2, 3)
+an_exception = Exactly(8)
+a_function.xp = an_exception.xp
+print(a_function.suitability(7))
+print(a_function.suitability(2.5))
+print(a_function.suitability(8))
 
-# "linear" or "bary" or "krogh" or "pchip" or "akima":‘not-a-knot’, ‘periodic’, ‘clamped’, ‘natural’
-print(f"0: {t.suitability(0)}, 2.5: {t.suitability(2.5)}, 5: {t.suitability(5)}, 10: {t.suitability(10)}")
-fn = t.evaluate(.01)
 # # Here's a way to view fuzzy numbers (1D functions):
+
+fn = t.evaluate(.01)
 plt.rcParams["figure.figsize"] = [7.50, 3.50]
 plt.rcParams["figure.autolayout"] = True
 plt.xlim(-1,11)     # domain to plot
@@ -62,11 +69,7 @@ if fn.xp is not None:
     xps = fn.xp[:, 1]
     plt.plot(xpv, xps, "o", markersize=5, color="blue")
 print(f"xp: {fn.xp}")
-
-
 plt.title("Line graph")
-
-
 plt.show()
 
 

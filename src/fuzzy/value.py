@@ -143,6 +143,7 @@ They are input variables holding well-defined fuzzy numbers.  There are several 
     * :class:`.Cauchy`
     * :class:`.Gauss`
     * :class:`.Bell`
+    * :class:`.Sigmoid`
     * :class:`.DPoints`
     * :class:`.CPoints`
     * :class:`.Exactly`
@@ -161,7 +162,8 @@ simpler fuzzy logic implementations.  (However, I like how they have constant va
 and so have relatively large variabilities near their extrema---this keeps things exciting.)
 
 The classes :class:`.Cauchy`, :class:`.Gauss`, and :class:`.Bell` all represent bell-shaped functions defined by their
-peak and width, a very natural way for talking vaguely about a number.
+peak and width, a very natural way for talking vaguely about a number.  The class :class:`.Sigmoid` does the same for
+talking vaguely about an inequality.
 
 The classes :class:`.DPoints` and :class:`.CPoints` allow one ot describe a fuzzy number as a set of :math:`(v,s)`
 pairs.  In the former, this is simply a discrete set.  In the latter, it implies a continuous function interpolated
@@ -309,7 +311,7 @@ Map!
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from math import floor, ceil
+from math import floor, ceil, log, sqrt
 from typing import Union, Tuple  # , ClassVar,
 
 import numpy as np
@@ -365,7 +367,6 @@ class Value(ABC):
 
         Note:
             * Subclasses might also define exceptional, discrete points.
-            * The subclass :class:`Numerical` provides that functionality.
             * Subclasses needn't define a continuous function."""
         self._d = domain
         self._ds = default_suitability
@@ -408,6 +409,26 @@ class Value(ABC):
         Returns:
             The suitability of the proposed value, a measure of truth in the range [0,1].
         """
+
+    @staticmethod
+    def _xp_helper(v: float, xp: np.ndarray = None) -> float:
+        """Implements the check for discrete points.
+
+        This is called by :class:`.Literal` and :class:`.Numerical`.
+
+        Args:
+            v: A value to be checked.
+            xp:  An array of (v, s) points.
+
+            Returns:
+                If ``v`` is in ``xp``, the corresponding ``s``, otherwise, ``None``.
+            """
+        s = None
+        if xp is not None:
+            exceptional = np.where(v == xp[:, 0])[0]  # returns the [row index] where condition is true...
+            if exceptional.shape[0] != 0:  # ...as an array!  So, if it's not empty, that's the answer:
+                s = xp[exceptional[0]][1]
+        return s
 
     @abstractmethod
     def evaluate(self, resolution: float) -> Numerical:
@@ -665,6 +686,7 @@ class Numerical(Value):
 
                 | axis=0: columns:---  column 0: values;   column 1: suitabilities.
                 | axis=1: rows
+
         """
         # The domain of the continuous function and the suitability elsewhere, outside the defined domains.
         super().__init__(domain, default_suitability)
@@ -709,17 +731,15 @@ class Numerical(Value):
 
         Returns:
             The suitability of ``value`` as defined by this :class:`.Numerical`."""
-        exceptional = np.where(value == self.xp[:, 0])[0]  # returns the [row index] where condition is true...
-        if exceptional.shape[0] != 0:  # ...as an array!  So, if it's not empty, that's the answer:
-            v = self.xp[exceptional[0]][1]
-        else:
+        s = Value._xp_helper(value, self.xp)
+        if s is None:
             if (self.d is None) or ((value < self.d[0]) or (value > self.d[1])):
-                v = self.ds
+                s = self.ds
             else:
                 if interp is None:
                     interp = Value.default_interpolator
-                v = interp.interpolate(value, self.v, self.s)
-        return Value._guard(v)
+                s = interp.interpolate(value, self.v, self.s)
+        return Value._guard(s)
 
     def evaluate(self, resolution: float) -> Numerical:
         """It returns itself because it is the evaluation.
@@ -816,6 +836,18 @@ class Literal(Value):
 
         | ``if origin is None:``
         |   ``origin = value_at_peak``
+
+    Note:
+        A Literal (or Numerical) that represents a continuous function, can have exceptional points added by
+        simple assignment, e.g.:
+
+            | ``a_function = Triangle(1, 2, 3)``
+            | ``an_exception = Exactly(8)``
+            | ``a_function.xp = an_exception.xp``
+            | ``print(a_function.suitability(7))``
+            | ``print(a_function.suitability(8))``
+
+        prints 0 then 1.  Note that the exceptional point needn't be in the domain of the continuous part.
     """
 
     def __init__(self, domain: Tuple[float, float],
@@ -825,8 +857,8 @@ class Literal(Value):
         """
         Args:
             domain:  The domain, [min, max], over which the suitability varies.  The full, continuous domain is
-                used, unless ``discrete=True`` or ``uniform`` is defined.
-            range:  The extremes of suitability that will be reached.  Default: (0,1).
+                used, unless it is discretized by defining ``discrete`` or by setting ``uniform=True``.
+            range:  The extremes of suitability that will be reached.  Default: [0,1].
             default_suitability:  Returned for values that are otherwise undefined.  Default: 0.
             discrete: If defined, the domain is restricted to these values, given explicitly
                 (and to any defined by ``uniform``).
@@ -856,6 +888,7 @@ class Literal(Value):
                 self.origin = origin
         else:
             self.origin = 0
+        self.xp = None
 
     @abstractmethod
     def _sample(self, v: np.ndarray) -> np.ndarray:
@@ -905,14 +938,16 @@ class Literal(Value):
 
         See :meth:`.Value.suitability`.
         """
-        s = self.ds
-        if self.uniform or (self.discrete is not None):
-            if self.uniform and ((v - self.origin) / self.step).is_integer():
+        s = Value._xp_helper(v, self.xp)
+        if s is None:
+            s = self.ds
+            if self.uniform or (self.discrete is not None):
+                if self.uniform and ((v - self.origin) / self.step).is_integer():
+                    s = self._sample(np.array([v]))[0]
+                if (self.discrete is not None) and (v in self.discrete):
+                    s = self._sample(np.array([v]))[0]
+            elif (self.d is not None) and ((v >= self.d[0]) and (v <= self.d[1])):
                 s = self._sample(np.array([v]))[0]
-            if (self.discrete is not None) and (v in self.discrete):
-                s = self._sample(np.array([v]))[0]
-        elif (self.d is not None) and ((v >= self.d[0]) and (v <= self.d[1])):
-            s = self._sample(np.array([v]))[0]
         return Value._guard(s)
 
 
@@ -1005,7 +1040,7 @@ class Trapezoid(Literal):
 
 
 class Cauchy(Literal):
-    """Describes a fuzzy number as a Cauchy bell shape.
+    """Describes a fuzzy number as the bell-shaped function due to Augustin-Louis Cauchy.
 
     This is a way of talking about a number as "``c`` ± ``hwhm``"."""
 
@@ -1016,7 +1051,7 @@ class Cauchy(Literal):
         """
         Args:
             c:  The most preferred value, at which the bell peaks.  It need not be in the ``domain``.
-            hwhm: The half width at half maximum---
+            hwhm: The half width at half maximum.
             domain: The extreme domain where the function is defined. Default:  the domain that covers
                 the suitability down to 1/1000 of its peak.
 
@@ -1042,7 +1077,7 @@ class Cauchy(Literal):
 
 
 class Gauss(Literal):
-    """Describes a fuzzy number as a Gaussian bell shape.
+    """Describes a fuzzy number as the bell-shaped function due to Carl Friedrich Gauss.
 
     This is a way of talking about a number as a normal distribution about an expectation value."""
 
@@ -1052,11 +1087,11 @@ class Gauss(Literal):
                  uniform: bool = False, step: float = 1, origin: float = None):
         """
         Args:
-            c:  The most preferred value, at which the bell peaks.  It need not be in the domain given as a tuple.
-            sd: The size of one standard deviation.
+            c:  The most preferred value, at which the bell peaks.  It need not be in the domain.
+            sd: The size of one standard deviation---a larger value gives a wider bell.
             domain: The extreme domain where the function is defined. It can be given as a tuple, (min, max),
-                or as a number of standard deviations about ``c``.  Default:  the domain that covers
-                the suitability down to 1/1000 of its peak.
+                or as ``float`` indicating the number of standard deviations about ``c``.
+                Default:  the domain that covers the suitability down to 1/1000 of its peak.
 
         Other Parameters:
             discrete, uniform, step, origin: relate to discretizing the domain.  See :class:`.Literal`.
@@ -1085,43 +1120,141 @@ class Gauss(Literal):
 class Bell(Literal):
     """Describes a fuzzy number as a generalized bell membership function.
 
-    This is a way of talking about a number as a normal distribution about an expectation value."""
+    This is a way of talking about a number as ``c`` ± ``hwhm`` with confidence ``slope``, or with
+    vagueness ``transition_width``."""
 
-    def __init__(self, a: float, b: float, c: float, domain: Union[Tuple[float, float], float] = None,
+    def __init__(self, c: float, hwhm: float, slope: float = None, domain: Union[Tuple[float, float], float] = None,
                  range: Tuple[float, float] = (0, 1), default_suitability: float = 0,
                  discrete: Iterable[float] = None,
-                 uniform: bool = False, step: float = 1, origin: float = None):
+                 uniform: bool = False, step: float = 1, origin: float = None,
+                 transition_width: float = None):
         """
         Args:
-            a: The half width at half maximum of the bell.
-            b: The steepness of the sides.  slope at .5:  bc/2a
             c: The center of the bell, the most preferred value.
+            hwhm: The half width at half maximum of the bell.
+            slope: The steepness of the sides---the absolute slope at half maximum.
+                Default: see ``transition_width`` below.
+            transition_width: Is an alternative to specifying the slope.  It is the width, given in multiples
+                of ``hwhm``, of the region on either side of the bell where the suitability varies on [.1, .9].
+                If defined, it overrides the definition of ``slope``.  Default: 1.
             domain: The extreme domain where the function is defined.  Default:  the domain that covers
                 the suitability down to 1/1000 of its peak.
+
+        Warning:
+            It's fairly easy to set a moderately shallow ``slope`` and get a huge default ``domain``.
+            It's wise to set ``domain`` manually if your ``slope < 1``.
 
         Other Parameters:
             discrete, uniform, step, origin: relate to discretizing the domain.  See :class:`.Literal`.
             origin:  Default: ``c``.
             """
         self.c = c
-        if a == 0:
+        if hwhm == 0:
             raise ValueError("``a`` cannot equal zero.")
-        self.a = a
-        if not (b > 0):
-            raise ValueError("``b`` must be greater than 0.")
+        self.hwhm = hwhm
+        if (slope is None) and (transition_width is None):
+            transition_width = 1
+        if transition_width is None:
+            if not (slope > 0):
+                raise ValueError("``slope`` must be greater than 0.")
+            b = slope * 2 * hwhm
+        else:
+            if not (transition_width > 0):
+                raise ValueError("``transition_width`` must be greater than 0.")
+            b = 1.09861229 / log(.5 * (transition_width + sqrt(4 + (transition_width ** 2))))
         self.b = b
         if origin is None:
             origin = c
         if domain is None:  # if undefined:  .001 of peak
-            w = a * (3 ** (3/(2 * b))) * (37 ** (1/(2 * b)))
+            w = hwhm * (3 ** (3 / (2 * b))) * (37 ** (1 / (2 * b)))
             domain = (c - w, c + w)
         super().__init__(domain, range, default_suitability, discrete, uniform, step, origin)
 
     def _sample(self, v: np.ndarray) -> np.ndarray:
         """Returns the suitability for every value in ``v``."""
-        s = 1 / (1 + np.abs((v - self.c) / self.a) ** (2 * self.b))
+        s = 1 / (1 + np.abs((v - self.c) / self.hwhm) ** (2 * self.b))
         s = s * (self.range[1] - self.range[0]) + self.range[0]
         return s
+
+
+class Sigmoid(Literal):
+    """Describes a fuzzy inequality as a sigmoid curve.
+
+    The "``sense``" of an inequality can be either ``">"`` or ``"<"``.
+    A Sigmoid, then, is a way of talking about an inequality as: "a value is ``sense c`` to within ``width``", or
+    "with confidence ``slope``"."""
+
+    def __init__(self, sense: str, c: float, width: float = None,
+                 domain: Tuple[float, float] = None, range: Tuple[float, float] = (0, 1),
+                 discrete: Iterable[float] = None,
+                 uniform: bool = False, step: float = 1, origin: float = None,
+                 slope: float = None):
+        """
+        Args:
+            sense: Either ``">"`` (more suitable on the right---when greater than ``c``) or ``"<"``
+                (more suitable on the left---when less than ``c``).
+            c:  The center of the transition, at which the suitability is .5.  It need not be in the ``domain``.
+            width: The full width of the transition region, where the suitability varies on [.1, .9].
+                Default: see ``slope`` below.
+            slope: Is an alternative to specifying the width.  It is simply the slope at ``c``.  If defined,
+                it overrides the definition of ``width``.  Default: 1.
+            domain: The extreme domain where the function is defined. Default:  the domain that covers
+                the suitability on [.001, .999].
+
+        Other Parameters:
+            discrete, uniform, step, origin: relate to discretizing the domain.  See :class:`.Literal`.
+            origin:  Default: ``c``.
+
+        Warning:
+            It's fairly easy to set a moderately shallow ``slope`` and get a huge default ``domain``.
+            It's wise to set ``domain`` manually if your ``slope < 1``.
+
+        Caution:
+            * The :meth:`.Sigmoid.suitability` method has been overridden to give the extremes of ``range`` according
+              to the ``sense`` of the inequality.  Consequently, there is no ``v`` for which it automatically returns
+              ``default_suitability``.  Therefore, that parameter is not in the signature.
+            * Making ``range[1] > range[0]`` will reverse the ``sense`` of the inequality.
+
+            """
+
+        self.c = c
+        if (slope is None) and (width is None):
+            slope = 1
+        if slope is None:
+            if not (width > 0):
+                raise ValueError("``width`` must be greater than 0.")
+            a = 4.39444915467244 / width
+        else:
+            if not (slope > 0):
+                raise ValueError("``slope`` must be greater than 0.")
+            a = 4 * slope
+        self.sense = -1 if sense == "<" else 1
+        self.a = a
+        if origin is None:
+            origin = c
+        if domain is None:  # if undefined:  s = [.001, .999]
+            w = 6.906754778648554 / self.a
+            domain = (c - w, c + w)
+        super().__init__(domain, range, 0, discrete, uniform, step, origin)
+
+    def _sample(self, v: np.ndarray) -> np.ndarray:
+        """Returns the suitability for every value in ``v``."""
+        s = 1 / (1 + np.exp(-self.sense * self.a * (v - self.c)))
+        s = s * (self.range[1] - self.range[0]) + self.range[0]
+        return s
+
+    def suitability(self, v: float) -> float:
+        """Returns the suitability of any real number, ``v``.
+
+        To follow the behavior expected of an inequality, it returns an extreme of ``range`` according to the ``sense``
+        of the inequality (``">"`` or ``"<"``).    I.e., it's a shelf function.
+        N.B.: it does not automatically return ``default_suitability`` for any ``v``. """
+        if v < self.d[0]:
+            return self.range[0] if self.sense > 0 else self.range[1]
+        elif v > self.d[1]:
+            return self.range[1] if self.sense > 0 else self.range[0]
+        else:
+            return super().suitability(v)
 
 
 class CPoints(Literal):
@@ -1138,17 +1271,19 @@ class CPoints(Literal):
         """
         Args:
             knots:  A collection of (value, suitability) pairs---knots to be interpolated between, producing s(v).
-                All values must be unique and all suitabilities will be scaled to ``range``, if defined.
+                All values must be unique and all suitabilities will be scaled to ``intended_range``, if defined.
             interp: Interpolator type used to construct the s(v) function.  See :class:`.Interpolator`.  Some
                 interpolators may define curves that stray outside [0,1], but these will be clipped automatically.
                 Default: ``linear``.
             expected_range: The expected range of input data.  Default: ``(0,1)``.
-                N.B.: The default allows direct entry of data.  If ``expected_range==None``,
-                the input be normalized to fill ``intended_range``.
+
+                * The default allows direct entry of data.
+                * If ``expected_range==None``, the input will be normalized to fill ``intended_range``.
+
             intended_range: Any subrange of [0,1] (it cannot be exceeded).  Default: ``(0,1)``
 
         Other Parameters:
-            map:  relate to mapping fuzzy units.  See :meth:`.Truth.scale`
+            map:  relates to mapping between ranges.  See :meth:`.Truth.scale`
             discrete, uniform, step, origin: relate to discretizing the domain.  See :class:`.Literal`.
 
             """
@@ -1181,27 +1316,56 @@ class DPoints(Numerical):
                  default_suitability: float = 0) -> None:
         """
         Args:
-            points:  A collection of (value, suitability) pairs.  All values must be unique
-                and all suitabilities must be on [0,1] or ``range``, if it is declared.
-            expected_range: The expected range of input data.  Default: (0,1).  N.B.: The default allows direct entry
-                of data.  If ``expected_range==None``, the input be normalized to fill ``intended_range``.
-            intended_range: Any subrange of [0,1] (may not exceed this).  Default: (0,1)
-            default_suitability:  The suitability outside the defined domain, defaults to 0.
+            points:  A collection of (value, suitability) pairs---discrete points.
+                All values must be unique and all suitabilities will be scaled to ``intended_range``, if defined.
+            expected_range: The expected range of input data.  Default: ``(0,1)``.
+
+                * The default allows direct entry of data.
+                * If ``expected_range==None``, the input will be normalized to fill ``intended_range``.
+
+            intended_range: Any subrange of [0,1] (it cannot be exceeded).  Default: ``(0,1)``
+            default_suitability:  The suitability elsewhere than the defined points, defaults to 0.
+
         Other Parameters:
             expected_range, intended_range, map, clip:  See :meth:`.Truth.scale`.
             """
-        p = np.array(points)
-        if intended_range is not None:
-            v = p[:, 0]
-            s = p[:, 1]
-            s = Truth.scale(s, "in", expected_range, map, clip)
-            s = Truth.scale(s, "out", intended_range, "lin", False)
+        if isinstance(points[0], Tuple):  # If it's more than one point:
+            p = np.array(points)
+            if intended_range is not None:
+                print(f"p: {p}")
+                v = p[:, 0]  # This slicing doesn't work for a single point.  Is there a better way?
+                s = p[:, 1]
+                s = Truth.scale(s, "in", expected_range, map, clip)
+                s = Truth.scale(s, "out", intended_range, "lin", False)
+                p = np.dstack((v, s))[0]
+        else:  # If it's only one point:
+            v = points[0]
+            s = points[1]
             p = np.dstack((v, s))[0]
         super().__init__(resolution=Value.default_resolution, domain=None,
                          points=p, default_suitability=default_suitability)
 
-# # Triangle, Trapezoid, Cauchy, Gauss, Bell, DPoints, CPoints --- "literals" defining a value;
-# # ValueNot, ValueAnd, ValueOr --- logic on values;
+
+class Exactly(DPoints):
+    """A fuzzy number exactly equivalent to a crisp number.
+
+    This enables crisp numbers to be used in fuzzy calculations.
+    """
+
+    def __init__(self, value: float) -> None:
+        """
+        Args:
+            value:  The value where suitability is 1---it is 0 at all other points.
+            """
+        super().__init__(points=(value, 1), default_suitability=0)
+
+
+# Logic operators on fuzzy numbers:
+
+
+
+
+
 # # Sum, Difference, Prod, Quotient, Focus, Abs, Inverse, Negative --- arithmetic on values.
 
 # doc; Trapezoid, Cauchy, Gauss, Bell; interps; logic ops; arithmetic ops; overloads; crispers; review; test; parser
