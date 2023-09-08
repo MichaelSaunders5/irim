@@ -219,94 +219,14 @@ outside [0,1]---this is guarded against internally.
 There you go.  You've taken a concept from the real world---containing your human knowledge, experience, and insight,
 I hope---and made it a computable object, available for reasoning in fuzzy algorithms.
 
-
-*Qualifying Fuzzy Numbers*
-..........................
-
-With fuzzy numbers defined, you may wish to qualify them.......
-
-
-
-* Methods, for emphasizing or deëmphasizing the contribution of a :class:`Value` to whatever expression
-  it is in---equivalent to partially defuzzifying or refuzzifying it.
-
-    * :meth:`.weight`
-    * :meth:`.focus`
-
-
-*Logical Operators*
-...................
-
-With fuzzy numbers defined, and possibly qualified, the next step is to reason with them.  This is done by putting
-them into expressions where numbers are operated upon---transmuted or combined into different numbers.
-
-
-* The eleven logical connectives, familiar from :mod:`truth` but here applied to the suitabilities of :class:`Value`
-  objects (the underscores are to difference them from Python keywords; the overloaded operators are rubricated
-  as code; truth tables are shown in brackets):
-
-    * :meth:`.Value.not_` (¬, ``~``) [10], the only unary; the two associatives:
-    * :meth:`.Value.and_` (∧, ``&``) [0001], and
-    * :meth:`.Value.or_` (∨, ``|``) [0111]; and the eight that are purely binary:
-    * :meth:`.Value.imp` (→, "implies", ``>>``) [1101],
-    * :meth:`.Value.con` (←, *converse*, ``<<``) [1011],
-    * :meth:`.Value.iff` (↔, *equivalence*, "if and only if", "xnor", ``~(a @ b)``) [1001], and its inverse---
-    * :meth:`.Value.xor` (⨁, *exclusive or*, ``@``) [0110]; and the other inverses:
-    * :meth:`.Value.nand` (↑, non-conjunction, ``~(a & b)``) [1110],
-    * :meth:`.Value.nor` (↓, non-disjunction, ``~(a | b)``) [1000],
-    * :meth:`.Value.nimp` (:math:`\\nrightarrow`, non-implication, ``~(a >> b)``) [0010], and
-    * :meth:`.Value.ncon` (:math:`\\nleftarrow`, non-converse implication, ``~(a << b)``) [0100].
-
-  All eleven logical connective methods can be defined by a :class:`Norm` optionally given in the call;
-  otherwise, they use the :attr:`fuzzy.norm.default_norm` by default.
-
-
-*Arithmetic Operators*
-......................
-
-* The N arithmetic operators:
-
-    * :meth:`.add_` (:math:`+`, (associative) addition, ``+``),
-    * :meth:`.sub_` (:math:`-`, (binary) subtraction, ``-``),
-    * :meth:`.mul_` (:math:`\\times`, (associative) multiplication, ``-``),
-    * :meth:`.div_` (:math:`\\div`, (binary) division, ``+``),
-    * :meth:`.abs_` (:math:`|x|`, (unary) absolute value, ``+``),
-    * :meth:`.neg_` (:math:`-`, (unary), negative (flipping the sign, not equivalent to logical negation) ``-x``),
-    * :meth:`.inv_` (:math:`1/x`, (unary) inversion, ``-``),
-    * :meth:`.pow_` (:math:`x^a`, (binary) exponentiation, ``**``), do I dare pow? exp? log?
-
-
-
-
-*Obtaining Final Solutions*
-...........................
-
-Map!
-
-* Two methods for making final decisions---"defuzzifying" the *fuzzy* :class:`Value` to a *crisp* ``float``:
-
-    * :meth:`.Value.crisp`, which allows the crisper to be given in the call, or
-    * :func:`.float`, which refers to a global default:  :attr:`.Value.default_crisper`.
-
-* The six comparisons: ``<``, ``>`` , ``<=``, ``>=``, ``==``, ``!=``. ??? defined by crisping with ``float()``?
-
-*Helpers*
-.........
-
-* "Crispers"---classes that implement defuzzification routines:
-
-* Interpolator, a class for implementing the interpolation routines needed for some descriptions.
+The module :mod:`.operator`, contains the code for fuzzy logic and math operators on :class:`.Value`\\ s.
+The code for crispers, interpolators and suitability mapping are all in :mod:`.crisp`.
 
 
 """
 
-# Here are the classes for fuzzy value and arithmetic:
 # Value --- base class;  Numerical --- "working" class of evaluation and defuzzification;
-# "literals" defining a value go here: Triangle, Trapezoid, Cauchy, Gauss, Bell, DPoints, CPoints, Exactly;
-# logic on Values:  the same ops as for Truth
-# arithmetic on Values: Sum, Difference, Prod, Quotient, Focus, Abs, Inverse, Negative;
-# Overloaded operators
-# Map, Interpolators, and Crispers go in crisp.py
+
 
 from __future__ import annotations
 
@@ -366,10 +286,17 @@ class Value(ABC):
             default_suitability:  The suitability for values that are otherwise undefined (the default is 0).
 
         Note:
-            * Subclasses might also define exceptional, discrete points.
+            * Subclasses might also define exceptional, discrete points in self.xp.
             * Subclasses needn't define a continuous function."""
         self._d = domain
+        self.xp = None  # Exceptional points go here.
+        # self.v = None         # values for the (v,s) of a continuous function go here---but only in Numerical.
+        # self.s = None  # suitabilities for the (v,s) of a continuous function go here---but only in Numerical.
         self._ds = default_suitability
+
+    def __str__(self):
+        skip = "" if self.xp is None else "\n"
+        return str(f"domain: {self.d}, elsewhere: {self.ds}, exceptional points: {skip}{self.xp}")
 
     @property
     def d(self) -> Tuple[float, float]:
@@ -409,26 +336,6 @@ class Value(ABC):
         Returns:
             The suitability of the proposed value, a measure of truth in the range [0,1].
         """
-
-    @staticmethod
-    def _xp_helper(v: float, xp: np.ndarray = None) -> float:
-        """Implements the check for discrete points.
-
-        This is called by :class:`.Literal` and :class:`.Numerical`.
-
-        Args:
-            v: A value to be checked.
-            xp:  An array of (v, s) points.
-
-            Returns:
-                If ``v`` is in ``xp``, the corresponding ``s``, otherwise, ``None``.
-            """
-        s = None
-        if xp is not None:
-            exceptional = np.where(v == xp[:, 0])[0]  # returns the [row index] where condition is true...
-            if exceptional.shape[0] != 0:  # ...as an array!  So, if it's not empty, that's the answer:
-                s = xp[exceptional[0]][1]
-        return s
 
     @abstractmethod
     def evaluate(self, resolution: float) -> Numerical:
@@ -538,28 +445,24 @@ class Value(ABC):
             return float(s)
 
     @staticmethod
-    def _scale(p: np.ndarray, expected_range: Tuple[float, float] = None, intended_range: Tuple[float, float] = (0, 1),
-               map: str = "lin", clip: bool = False) -> np.ndarray:
-        """A private helper function to scale a set of (v,y) pairs to a subrange of [0,1].
+    def _xp_helper(v: float, xp: np.ndarray = None) -> float:
+        """Implements the check for discrete points.
 
-        This is called by :class:`.DPoints` for discrete points.  It uses :meth:`.Truth.scale`. but handles the
-        separation and recombination of the 2D array.
+        This is called by :class:`.Literal` and :class:`.Numerical`.
 
         Args:
-            p: A 2D array of (x, y) points.
-            expected_range: The expected range of input data.  Default: the actual range given.
-            intended_range: Any subrange of [0,1].  Default: (0,1)
+            v: A value to be checked.
+            xp:  An array of (v, s) points.
 
-        Other Parameters:
-            [range], map, clip:  See :meth:`.Truth.scale`.
-
-        Returns:
-            The same exceptional points with the suitabilities rescaled."""
-        v = p[:, 0]
-        s = p[:, 1]
-        s = Truth.scale(s, "in", expected_range, map, clip)
-        s = Truth.scale(s, "out", intended_range, "lin", False)
-        return np.dstack((v, s))[0]
+            Returns:
+                If ``v`` is in ``xp``, the corresponding ``s``, otherwise, ``None``.
+            """
+        s = None
+        if xp is not None:
+            exceptional = np.where(v == xp[:, 0])[0]  # returns the [row index] where condition is true...
+            if exceptional.shape[0] != 0:  # ...as an array!  So, if it's not empty, that's the answer:
+                s = xp[exceptional[0]][1]
+        return s
 
     @staticmethod
     def _compare(a: Value, b: Value, type: str, resolution: float = default_resolution,
@@ -714,6 +617,14 @@ class Numerical(Value):
             if s[:-1][s[1:] == s[:-1]]:
                 raise ValueError("You cannot define two suitabilities for the same value in ``xp``.")
             self.xp = sorted  # Pleasant side effect: this leaves xp sorted by ascending values.
+
+    def __str__(self):
+        s = super().__str__()
+        if len(self.v) > 0:
+            x = f"on [{self.v[0]}, {self.v[-1]}]"
+        else:
+            x = ""
+        return str(f"{s} \n continuous: {self.resolution} resolution--{len(self.v)} samples {x}")
 
     def suitability(self, value: float, interp: Interpolator = None) -> float:
         """Returns the suitability of a given value, according to ``self``.
@@ -890,6 +801,21 @@ class Literal(Value):
             self.origin = 0
         self.xp = None
 
+    def __str__(self):
+        s = super().__str__()
+        u, d, c = "", "", ""
+        if self.uniform:
+            u = str(f"uniform {self.step} steps from {self.origin}")
+        if self.discrete is not None:
+            d = str(f"at values: {self.discrete}")
+        if self.uniform and self.discrete is not None:
+            c = str(f" and at ")
+        if self.uniform or self.discrete is not None:
+            i = str(f"discretization: ")
+        else:
+            i = str(f"no discretization. ")
+        return str(f"{s} \n range: {self.range}; {i}{d}{c}{u}")
+
     @abstractmethod
     def _sample(self, v: np.ndarray) -> np.ndarray:
         """This is where you implement the s(v) function that defines your fuzzy number.
@@ -931,6 +857,7 @@ class Literal(Value):
                 s[0] = 2 * s[1] - s[2]
                 s[-1] = 2 * s[-2] - s[-3]
             n.s = s
+            n.xp = self.xp
         return n
 
     def suitability(self, v: float) -> float:
@@ -978,6 +905,11 @@ class Triangle(Literal):
             origin = b
         super().__init__((a, c), range, default_suitability, discrete, uniform, step, origin)
 
+    def __str__(self):
+        s = super().__str__()
+        dir = "peak" if (self.range[1] > self.range[0]) else "nadir"
+        return str(f"triangle with {dir} at ({self.b}, {self.range[1]}) \n {s}")
+
     def _sample(self, v: np.ndarray) -> np.ndarray:
         """Returns the suitability for every value in ``v``."""
         if self.b == self.d[0]:
@@ -1021,6 +953,11 @@ class Trapezoid(Literal):
         if origin is None:
             origin = (c - b) / 2
         super().__init__((a, d), range, default_suitability, discrete, uniform, step, origin)
+
+    def __str__(self):
+        s = super().__str__()
+        dir = "plateau" if (self.range[1] > self.range[0]) else "valley"
+        return str(f"trapezoid with {dir} at {self.range[1]} on ({self.b}, {self.c}) \n {s}")
 
     def _sample(self, v: np.ndarray) -> np.ndarray:
         """Returns the suitability for every value in ``v``."""
@@ -1069,6 +1006,11 @@ class Cauchy(Literal):
             domain = (c - 31.6069612585582 * hwhm, c + 31.6069612585582 * hwhm)
         super().__init__(domain, range, default_suitability, discrete, uniform, step, origin)
 
+    def __str__(self):
+        s = super().__str__()
+        dir = "peak" if (self.range[1] > self.range[0]) else "nadir"
+        return str(f"Cauchy bell with {dir} at ({self.c} ± {self.hwhm}, {self.range[1]}) \n {s}")
+
     def _sample(self, v: np.ndarray) -> np.ndarray:
         """Returns the suitability for every value in ``v``."""
         s = (self.hwhm ** 2) / (np.square(v - self.c) + self.hwhm ** 2)
@@ -1109,6 +1051,12 @@ class Gauss(Literal):
             d = domain * sd
             domain = (c - d, c + d)
         super().__init__(domain, range, default_suitability, discrete, uniform, step, origin)
+
+    def __str__(self):
+        s = super().__str__()
+        dir = "peak" if (self.range[1] > self.range[0]) else "nadir"
+        return str(f"Gaussian bell with {dir} at ({self.c} ± {1.17741 * self.sd}, {self.range[1]}) and "
+                   f"standard deviation {self.sd} \n {s}")
 
     def _sample(self, v: np.ndarray) -> np.ndarray:
         """Returns the suitability for every value in ``v``."""
@@ -1169,6 +1117,11 @@ class Bell(Literal):
             w = hwhm * (3 ** (3 / (2 * b))) * (37 ** (1 / (2 * b)))
             domain = (c - w, c + w)
         super().__init__(domain, range, default_suitability, discrete, uniform, step, origin)
+
+    def __str__(self):
+        s = super().__str__()
+        dir = "peak" if (self.range[1] > self.range[0]) else "nadir"
+        return str(f"bell with {dir} at ({self.c} ± {self.hwhm}, {self.range[1]}) \n {s}")
 
     def _sample(self, v: np.ndarray) -> np.ndarray:
         """Returns the suitability for every value in ``v``."""
@@ -1237,6 +1190,12 @@ class Sigmoid(Literal):
             domain = (c - w, c + w)
         super().__init__(domain, range, 0, discrete, uniform, step, origin)
 
+    def __str__(self):
+        s = super().__str__()
+        sense = "<" if (self.sense < 0) else ">"
+        return str(f"sigmoid: x {sense} {self.c} ± {4.39444915467244/self.a} with slope {self.a/4} \n {s}")
+
+
     def _sample(self, v: np.ndarray) -> np.ndarray:
         """Returns the suitability for every value in ``v``."""
         s = 1 / (1 + np.exp(-self.sense * self.a * (v - self.c)))
@@ -1263,7 +1222,7 @@ class CPoints(Literal):
     Note the similarity of its interface to that of :class:`DPoints`---it is easy to convert the calls.
     """
 
-    def __init__(self, knots: Iterable[Tuple[float, float]], interp: str = None,
+    def __init__(self, knots: Iterable[Tuple[float, float]], interp: Union[str, Tuple] = None,
                  expected_range: Tuple[float, float] = (0, 1), intended_range: Tuple[float, float] = (0, 1),
                  map: str = "lin", default_suitability: float = 0,
                  discrete: Iterable[float] = None,
@@ -1300,6 +1259,13 @@ class CPoints(Literal):
         else:
             self.interp = Interpolator(kind=interp)
 
+
+    def __str__(self):
+        s = super().__str__()
+        i = self.interp.__str__()
+        knots = np.dstack((self.points_v, self.points_s))[0]
+        return str(f"interpolation by {i} of knots:\n  {knots} \n {s}")
+
     def _sample(self, v: np.ndarray) -> np.ndarray:
         """Returns the suitability for every value in ``v``."""
         return self.interp.interpolate(v, self.points_v, self.points_s)
@@ -1332,7 +1298,6 @@ class DPoints(Numerical):
         if isinstance(points[0], Tuple):  # If it's more than one point:
             p = np.array(points)
             if intended_range is not None:
-                print(f"p: {p}")
                 v = p[:, 0]  # This slicing doesn't work for a single point.  Is there a better way?
                 s = p[:, 1]
                 s = Truth.scale(s, "in", expected_range, map, clip)
@@ -1359,13 +1324,98 @@ class Exactly(DPoints):
             """
         super().__init__(points=(value, 1), default_suitability=0)
 
+    def __str__(self):
+        s = super().__str__()
+        return str(f"exactly {self.xp[0][0]} \n {s}")
 
-# Logic operators on fuzzy numbers:
+"""supplies operators for fuzzy numbers.
+
+
+Introduction
+------------
 
 
 
+*Logical Operators*
+...................
+
+With fuzzy numbers defined, and possibly qualified, the next step is to reason with them.  This is done by putting
+them into expressions where numbers are operated upon---transmuted or combined into different numbers.
 
 
-# # Sum, Difference, Prod, Quotient, Focus, Abs, Inverse, Negative --- arithmetic on values.
+* The eleven logical connectives, familiar from :mod:`truth` but here applied to the suitabilities of :class:`Value`
+  objects (the underscores are to difference them from Python keywords; the overloaded operators are rubricated
+  as code; truth tables are shown in brackets):
 
-# doc; Trapezoid, Cauchy, Gauss, Bell; interps; logic ops; arithmetic ops; overloads; crispers; review; test; parser
+    * :meth:`.Value.not_` (¬, ``~``) [10], the only unary; the two associatives:
+    * :meth:`.Value.and_` (∧, ``&``) [0001], and
+    * :meth:`.Value.or_` (∨, ``|``) [0111]; and the eight that are purely binary:
+    * :meth:`.Value.imp` (→, "implies", ``>>``) [1101],
+    * :meth:`.Value.con` (←, *converse*, ``<<``) [1011],
+    * :meth:`.Value.iff` (↔, *equivalence*, "if and only if", "xnor", ``~(a @ b)``) [1001], and its inverse---
+    * :meth:`.Value.xor` (⨁, *exclusive or*, ``@``) [0110]; and the other inverses:
+    * :meth:`.Value.nand` (↑, non-conjunction, ``~(a & b)``) [1110],
+    * :meth:`.Value.nor` (↓, non-disjunction, ``~(a | b)``) [1000],
+    * :meth:`.Value.nimp` (:math:`\\nrightarrow`, non-implication, ``~(a >> b)``) [0010], and
+    * :meth:`.Value.ncon` (:math:`\\nleftarrow`, non-converse implication, ``~(a << b)``) [0100].
+
+  All eleven logical connective methods can be defined by a :class:`Norm` optionally given in the call;
+  otherwise, they use the :attr:`fuzzy.norm.default_norm` by default.
+
+
+*Arithmetic Operators*
+......................
+
+* The N arithmetic operators:
+
+    * :meth:`.add_` (:math:`+`, (associative) addition, ``+``),
+    * :meth:`.sub_` (:math:`-`, (binary) subtraction, ``-``),
+    * :meth:`.mul_` (:math:`\\times`, (associative) multiplication, ``-``),
+    * :meth:`.div_` (:math:`\\div`, (binary) division, ``+``),
+    * :meth:`.abs_` (:math:`|x|`, (unary) absolute value, ``+``),
+    * :meth:`.neg_` (:math:`-`, (unary), negative (flipping the sign, not equivalent to logical negation) ``-x``),
+    * :meth:`.inv_` (:math:`1/x`, (unary) inversion, ``-``),
+    * :meth:`.pow_` (:math:`x^a`, (binary) exponentiation, ``**``), do I dare pow? exp? log?
+
+
+*Qualifying Fuzzy Numbers*
+..........................
+
+With fuzzy numbers defined, you may wish to qualify them.......
+
+
+
+* Methods, for emphasizing or deëmphasizing the contribution of a :class:`Value` to whatever expression
+  it is in---equivalent to partially defuzzifying or refuzzifying it.
+
+    * :meth:`.weight`
+    * :meth:`.focus`
+
+
+
+*Obtaining Final Solutions*
+...........................
+
+Map!
+
+* Two methods for making final decisions---"defuzzifying" the *fuzzy* :class:`Value` to a *crisp* ``float``:
+
+    * :meth:`.Value.crisp`, which allows the crisper to be given in the call, or
+    * :func:`.float`, which refers to a global default:  :attr:`.Value.default_crisper`.
+
+* The six comparisons: ``<``, ``>`` , ``<=``, ``>=``, ``==``, ``!=``. ??? defined by crisping with ``float()``?
+
+*Helpers*
+.........
+
+* "Crispers"---classes that implement defuzzification routines:
+
+* Interpolator, a class for implementing the interpolation routines needed for some descriptions.
+
+"""
+
+# Here are the classes for fuzzy value and arithmetic:
+# logic on Values:  the same ops as for Truth
+# arithmetic on Values: Sum, Difference, Prod, Quotient; Focus, weight; Abs, Inverse, Negative;
+# Overloaded operators
+# Map, Interpolators, and Crispers go in crisp.py

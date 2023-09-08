@@ -1,7 +1,7 @@
 # Here is where I am testing or playing around or something.
-import numpy as np
 import matplotlib.pyplot as plt
-from fuzzy.value import *
+
+from fuzzy.operator import *
 
 # f = Truth(.1)
 # mf = Truth(.4)
@@ -33,45 +33,59 @@ from fuzzy.value import *
 # print(f"0010 = {~(f >> f)}, {~(f >> t)}, {~(t >> f)}, {~(t >> t)}")
 # print(f"0100 = {~(f << f)}, {~(f << t)}, {~(t << f)}, {~(t << t)}")
 
-# TODO: test dp, cp, ;cont + xp?, trap cauchy gauss bell exactly. width/focus, logic, arith, outputs, crisp etc.
-# t = Triangle(0,5,10)
-# t = DPoints(((0,1),(2.5,.5),(5, 0),(7.5,.5),(10,0)))
+# TODO: una: l/a; bin: l/a;  ass: l/a;  width/focus, outputs, crisp etc.
+t = Triangle(0, 1, 10)
 # Truth.default_threshold = .1
-# t = CPoints(((0,1),(2.5,.5),(5, 1),(7.5,.75),(10,0)), None)
-t = Trapezoid(1, 3, 5, 9)
-# t = Cauchy(5,2, (0,10))
-# t = Gauss(6,.1, 18)
+# t = CPoints(((0,1),(2.5,.5),(5, 1),(7.5,.75),(10,0)), "krogh")
+# t = DPoints(((0, 1), (2.5, .5), (5, 0), (7.5, .5), (10, 0)))
+# print(f"DPoints itself:  {t}")
+t = Negative(t)
+# print(f"Not:  {t}")
+# e = t.evaluate(.1)
+# print(f"{e}")
+
+# t = Cauchy(5,2)
+# t = Gauss(6, 1, 18)
 # a = Bell(4, 4, .5)
 # b = Bell(8, 4, .5)
-# t =  Sigmoid("<",5, 1, range=(.1,.3)
-a_function = Triangle(1, 2, 3)
-an_exception = Exactly(8)
-a_function.xp = an_exception.xp
-print(a_function.suitability(7))
-print(a_function.suitability(2.5))
-print(a_function.suitability(8))
-
+# print(f"{t}")
+# s =  Sigmoid("<",5, 1)
+# x = Exactly(2.5)
+# t = Trapezoid(1, 3, 5, 9)
+# t.xp = x.xp
+# print(f"~truth: {Not(Truth(.2)).suitability(0)}")
+# print(f"~float: {Not(.3).suitability(0)}")
+# print(f"~int: {Not(0).suitability(0)}")
+# print(f"~bool: {Not(True).suitability(0)}")
+# t = Truth(.2)
+# print(f"t type: {type(t)};  t: {t}")
+# v = Not(t)
+# print(f"v type: {type(v)};  v: {v}")
+# e = v.evaluate(1)
+# print(f"e type: {type(e)};  e: {e}")
+# print(f"s: {s.evaluate(.01)}")
 # # Here's a way to view fuzzy numbers (1D functions):
+def plot(t: Value):
+    fn = t.evaluate(.1)
+    plt.rcParams["figure.figsize"] = [7.50, 3.50]
+    plt.rcParams["figure.autolayout"] = True
+    plt.xlim(-11, 11)  # domain to plot
+    plt.ylim(-.1, 1.1)
+    plt.grid()
 
-fn = t.evaluate(.01)
-plt.rcParams["figure.figsize"] = [7.50, 3.50]
-plt.rcParams["figure.autolayout"] = True
-plt.xlim(-1,11)     # domain to plot
-plt.ylim(-.1, 1.1)
-plt.grid()
+    v = fn.v  # [:, 0]
+    s = fn.s  # [:, 1]
+    plt.plot(v, s, color="red")
 
-v = fn.v       # [:, 0]
-s = fn.s       # [:, 1]
-plt.plot(v, s, color="red")
+    if fn.xp is not None:
+        xpv = fn.xp[:, 0]
+        xps = fn.xp[:, 1]
+        plt.plot(xpv, xps, "o", markersize=3, color="blue")
+    # print(f"xp: {fn.xp}")
+    plt.title("Line graph")
+    plt.show()
 
-if fn.xp is not None:
-    xpv = fn.xp[:, 0]
-    xps = fn.xp[:, 1]
-    plt.plot(xpv, xps, "o", markersize=5, color="blue")
-print(f"xp: {fn.xp}")
-plt.title("Line graph")
-plt.show()
-
+plot(t)
 
 # #  This animates the norms (by strictness) for inspection.
 #

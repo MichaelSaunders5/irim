@@ -25,7 +25,7 @@ class Interpolator:
 
     Instances hold the parameter.  The work is done in the :meth:`.interpolate` method."""
 
-    def __init__(self, kind: str = "linear"):
+    def __init__(self, kind: Union[str, tuple] = "linear"):
         """Args:
             kind: A string or tuple---((*left*), (*right*))---indicating the type of interpolation:
 
@@ -69,6 +69,15 @@ class Interpolator:
         else:
             raise NameError(f"{kind} isn't a type of interpolator")
 
+    def __str__(self):
+        if isinstance(self.kind, tuple):
+            l = "1st" if self.kind[0][0]==1 else "2nd"
+            r = "1st" if self.kind[1][0]==1 else "2nd"
+            return str(f"cubic interpolator with derivative boundary conditions "
+                       f"({l} = {self.kind[0][1]}, {r} = {self.kind[1][1]})")
+        else:
+            return str(f"{self.kind} interpolator")
+
     def interpolate(self, value: Union[np.ndarray, float], v: np.ndarray, s: np.ndarray) -> Union[np.ndarray, float]:
         """Interpolates to perform a numerical function.
 
@@ -102,7 +111,7 @@ class Interpolator:
 
 
 class Map:
-    """A function mapping a fuzzy number's suitability onto real numbers.
+    """A callable object: a function mapping a fuzzy number's suitability onto real numbers.
 
     The most familiar way of using a fuzzy number is to "defuzzify" it to obtain a single, definite, crisp number.
     That is accomplished by the :meth:`.Value.crisp` method.  Another way is to use a function to map its
@@ -148,6 +157,17 @@ class Map:
         else:
             self.clip = True
 
+    def __str__(self):
+        if self.map=="exp" or "invlog":
+            map = "exponatially"
+        elif self.map=="log" or "invexp":
+            map = "logarithmically"
+        else:
+            map = "linearly"
+        n = self.numerical.__str__()
+        return str(f"a callable object {map} mapping to {self.range} the suitability "
+                   f"of the following fuzzy number:\n {n}")
+
     def __call__(self, x: float) -> float:
         """Performs function mapped from the :math:`s(v)` of a fuzzy number.
 
@@ -188,3 +208,6 @@ class MedMax(Crisper):
         # for each, v s and xp, find maxima.  find median of them.  xp might have two---chose the one where
         # s is greater, or, if they are equal...?  then choose the more suitable of the two.
         return (numerical.d[0] + numerical.d[1]) / 2  # do the real one later
+
+    def __str__(self):
+        return str(f"a median-of-the-maxima crisper---options?")
