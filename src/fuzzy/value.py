@@ -437,12 +437,12 @@ class Value(ABC):
 
         Returns:
             The best equivalent, restricted to [0,1]."""
-        s = np.nan_to_num(s, nan=Truth.default_threshold, posinf=1, neginf=0)
-        s = np.clip(s, 0, 1)
+        r = np.nan_to_num(s, nan=Truth.default_threshold, posinf=1, neginf=0)
+        r = np.clip(r, 0, 1)
         if isinstance(s, np.ndarray):
-            return s
+            return r
         else:
-            return float(s)
+            return float(r)
 
     @staticmethod
     def _xp_helper(v: float, xp: np.ndarray = None) -> float:

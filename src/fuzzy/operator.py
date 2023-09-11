@@ -3,6 +3,17 @@ from fuzzy.value import *
 
 Operand = Union[Value, Truth, float, int, bool]  # but not np.ndarray, because it has no domain
 
+def safe_div(x: float, y: float):
+    if x==0:
+        return 0    # yeah?
+    try:
+        return x/y
+    except ZeroDivisionError:
+        if xy<0:
+            return -sys.float_info.max
+        else:
+            return sys.float_info.max
+
 class Truthy(Numerical):
     """A wrapper for Truths (or equivalent numbers) we want to treat as :class:`.Value`\\ s."""
     def __init__(self, suitability):
@@ -69,16 +80,16 @@ class Not(UnaryOperator):
         """"""
         return self.n.not_(self.a.suitability(v))
 
-# TODO:  test Negative and code the rest
 class Negative(UnaryOperator):
     """"""
     def __str__(self):
         a = self.a.__str__()
-        return str(f"NEG({a})")
+        return str(f"NEGATIVE({a})")
     def evaluate(self, resolution: float) -> Numerical:
         """"""
         na = self.a.evaluate(resolution)
-        na.d = (-na.d[1], -na.d[0])
+        if na.d is not None:
+            na.d = (-na.d[1], -na.d[0])
         if na.xp is not None:
             xpv = np.atleast_2d(na.xp)[:, 0]
             xps = np.atleast_2d(na.xp)[:, 1]
@@ -89,29 +100,43 @@ class Negative(UnaryOperator):
 
     def suitability(self, v: float) -> float:
         """"""
-        return -self.a.suitability(v)
+        return self.a.suitability(-v)
 
 
+
+# TODO:  from here
 class Invert(UnaryOperator):
     """"""
+    def __init__(self, a: Operand, n: Norm = None, domain_limit: float = 2):
+        super().__init__(a, n)        # factor by which domain may be expanded
+        self.domain_limit = domain_limit  # This isn't a good default, but I can't guess what you're up to.
     def __str__(self):
         a = self.a.__str__()
-        return str(f"INV({a})")
+        return str(f"INVERT({a})")
     def evaluate(self, resolution: float) -> Numerical:
         """"""
         na = self.a.evaluate(resolution)
-        na.d = (-na.d[1], -na.d[0])     # This will take resampling... but how far?  ...
-        if na.xp is not None:
+        if na.d is not None:     # This will take resampling... but how far are you willing to go?
+            proposed_d = tuple(list.sort([safe_div(1, na.d[0]), safe_div(1, na.d[1])]))
+            old_extent = na.d[1] - na.d[0]
+            allowable_extent = old_extent * self.domain_limit
+            new_center = proposed_d[0] + exp(log(proposed_d[1] - proposed_d[0]) / 2)
+            proposed_extent = proposed_d[1] - proposed_d[0]
+            half_new_extent = min(proposed_extent, allowable_extent)/2
+            na.d = (new_center - half_new_extent, new_center + half_new_extent)
+
+        if na.xp is not None:   # We're not limiting this extent.
             xpv = np.atleast_2d(na.xp)[:, 0]
             xps = np.atleast_2d(na.xp)[:, 1]
-            xpv = -1 * xpv
+            xpv = safe_div(1, xpv)
             na.xp = np.column_stack((xpv, xps))
-        na.v = -1 * na.v
+        na.v = -1 * na.v        #resample. build a new v array compliant with new domain.  s remains the same, I think.
+        # Or, consider the possibility of a v that is log(v)  to solve the variable resolution problem.
         return na
 
     def suitability(self, v: float) -> float:
         """"""
-        return 1 / self.a.suitability(v)
+        return self.a.suitability(1 / v)
 
 
 class Abs(UnaryOperator):
