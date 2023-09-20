@@ -72,50 +72,54 @@ class Norm(ABC):
     the fundamental operators, e.g., ``n.and_(a, b)``.  Many norms are available.  When in doubt, use the default.
     """
 
-    Operand = Union[float, np.ndarray]  # Operand = float | np.ndarray  # maybe write it this way after Python 3.8?
+    Operand = Union[float, np.ndarray]  # TruthOperand = float | np.ndarray  # maybe write it this way after Python 3.8?
     Operator = Callable[[Operand, Operand], Operand]
+    strictness: float
 
     @classmethod
-    def define(cls, **kwargs: str | float) -> Norm:
-        """A factory method to create Norms: It parses ``kwargs`` and returns a subclass of Norm.
+    def define(cls, **norm_args) -> Norm:
+        """A factory method to create Norms: It parses ``norm_args`` and returns a subclass of Norm.
 
-        Kwargs:
-            ``key=value`` pairs in one of these combinations:
+        Keyword Parameters:
 
-                * ``None``:  The default:  product / probabilistic Sum (``'pp'``).
-                * ``norm=`` a norm key (table below) indicating a simple norm.
-                * ``norm=`` a norm key for a parameterized norm;
-                  ``p=`` a (list of) parameter(s)  on [0,100] or [-100,100].
-                * ``norm1, norm2=`` keys for two simple norms forming a compound by linear combination;
-                  ``weight=`` [0,100], so that 0: ``norm1``, 100: ``norm2``.
-                * ``strictness=`` [-100,100]: a norm defined by the tendency to have
-                  an extreme value (for greater strictness, :meth:`and_` is more likely to be false
-                  and :meth:`or_` is more likely to be true).
+            There are five possible keys:
 
-        The norm keys are, from least to most strict:
+                'n1'
+                    The code for norm type.
+                'n1p'
+                    A list of parameters defining the norm, if the norm requires it.  (Only "hhp" and "str" do.)
+                'n2', 'n2p', 'cnp'
+                    To indicate a compound norm, describe the second with ``'n2', 'n2p'`` and set the "compound norm
+                    percentage" with ``'cnp'``---this weights the two together so that, e.g., ``'cnp':0`` is all n1,
+                    and ``'cnp':100`` is all n2.
 
-        +-------------+------------+-------------------------------------------------+
-        |  strictness |    key     |name                                             |
-        +=============+============+=================================================+
-        |        -100 | ``'lx'``   |lax                                              |
-        +-------------+------------+-------------------------------------------------+
-        |      -75.69 | ``'mm'``   |minimum / maximum (Gödel, Zadeh)                 |
-        +-------------+------------+-------------------------------------------------+
-        |      -49.78 | ``'hh'``   |Hamacher                                         |
-        +-------------+------------+-------------------------------------------------+
-        |      -22.42 | ``'pp'``   |product / probabilistic sum (Goguen)             |
-        +-------------+------------+-------------------------------------------------+
-        |        5.00 | ``'ee'``   |Einstein                                         |
-        +-------------+------------+-------------------------------------------------+
-        |       33.20 | ``'nn'``   |nilpotent (Kleene-Dienes)                        |
-        +-------------+------------+-------------------------------------------------+
-        |       63.63 | ``'lb'``   |Łukasiewicz / bounded sum                        |
-        +-------------+------------+-------------------------------------------------+
-        |         100 | ``'dd'``   |drastic                                          |
-        +-------------+------------+-------------------------------------------------+
-        |[-50,-22,100]| ``'hhp'``  |parameterized Hamacher;  ``p=`` 0: Hamacher;     |
-        |             |            |50: product; 100: drastic                        |
-        +-------------+------------+-------------------------------------------------+
+            E.g., ``fuzzy_ctrl(norm={'n1': "str", 'n1p': 25})``.
+            In order of increasing strictness, the norm codes are:
+
+            +-------------+------------+-------------------------------------------------+
+            | strictness  |   code     |name                                             |
+            +=============+============+=================================================+
+            |    -100.00  | ``'lx'``   |lax                                              |
+            +-------------+------------+-------------------------------------------------+
+            |     -75.69  | ``'mm'``   |minimum / maximum (Gödel, Zadeh)                 |
+            +-------------+------------+-------------------------------------------------+
+            |     -49.78  | ``'hh'``   |Hamacher                                         |
+            +-------------+------------+-------------------------------------------------+
+            |     -22.42  | ``'pp'``   |product (Goguen)                                 |
+            +-------------+------------+-------------------------------------------------+
+            |       5.00  | ``'ee'``   |Einstein                                         |
+            +-------------+------------+-------------------------------------------------+
+            |      33.20  | ``'nn'``   |nilpotent (Kleene-Dienes)                        |
+            +-------------+------------+-------------------------------------------------+
+            |      63.63  | ``'lb'``   |Łukasiewicz                                      |
+            +-------------+------------+-------------------------------------------------+
+            |     100.00  | ``'dd'``   |drastic                                          |
+            +-------------+------------+-------------------------------------------------+
+            |[-50,-22,100]| ``'hhp'``  |parameterized Hamacher;  ``p=`` 0: Hamacher;     |
+            |             |            |50: product; 100: drastic                        |
+            +-------------+------------+-------------------------------------------------+
+            |[-100, 100]  | ``'str'``  |strictness norm                                  |
+            +-------------+------------+-------------------------------------------------+
 
 
         Returns:
@@ -129,23 +133,22 @@ class Norm(ABC):
             | returns .125.
         """
         # This can't be the __new__ method, since the instance returned is a subclass--infinite recursion would result.
-        if kwargs is None:
-            n = Prod()
-        elif "norm" in kwargs:
-            n = cls._simple_factory(kwargs.get("norm"), kwargs.get("p"))
-        elif "strictness" in kwargs:
-            n = StrictnessNorm(kwargs.get("strictness"))
-        elif "norm1" in kwargs and "norm2" in kwargs and "weight" in kwargs:
-            n1 = cls._simple_factory(kwargs.get("n1"))
-            n2 = cls._simple_factory(kwargs.get("n2"))
-            w = kwargs.get("weight")
-            n = CompoundNorm(n1, n2, w)
+        if norm_args is not None:
+            n1, n1p = norm_args.get('n1', "pp"), norm_args.get('n1p', [0])
+            n2, n2p = norm_args.get('n2', None), norm_args.get('n2p', [0])
+            cnp = norm_args.get('cnp', "50")
+            norm_1 = cls._simple_factory(n1, *n1p)
+            if n2 is not None:
+                norm_2 = cls._simple_factory(n2, *n2p)
+                norm = CompoundNorm(norm_1, norm_2, cnp)
+            else:
+                norm = norm_1
         else:
-            n = Prod()
-        return n
+            norm = cls._simple_factory("pp")
+        return norm
 
     @classmethod
-    def _simple_factory(cls, norm_key: str, *args: float) -> SimpleNorm:
+    def _simple_factory(cls, norm_key: str, *args: float) -> Norm:
         """A factory for creating :class:`SimpleNorm` objects,
         used by :class:`CompoundNorm` and :class:`StrictnessNorm`.
 
@@ -157,23 +160,34 @@ class Norm(ABC):
             A :class:`SimpleNorm` of the desired type.
         """
         if norm_key == "lx":
-            return Lax()
+            n = Lax()
+            n.strictness = -100
         elif norm_key == "mm":
-            return MinMax()
+            n = MinMax()
+            n.strictness = -75.69
         elif norm_key == "hh":
-            return Hamacher()
-        elif norm_key == "pp":
-            return Prod()
+            n = Hamacher()
+            n.strictness = -49.78
         elif norm_key == "ee":
-            return Einstein()
+            n = Einstein()
+            n.strictness = 5.00
         elif norm_key == "nn":
-            return Nilpotent()
+            n = Nilpotent()
+            n.strictness = 33.20
         elif norm_key == "lb":
-            return Lukasiewicz()
+            n = Lukasiewicz()
+            n.strictness = 63.63
         elif norm_key == "dd":
-            return Drastic()
+            n = Drastic()
+            n.strictness = 100
         elif norm_key == "hhp":
-            return ParameterizedHamacher(float(args[0]))
+            n = ParameterizedHamacher(float(args[0]))
+        elif norm_key == "str":
+            n = StrictnessNorm(float(args[0]))
+        else:  # norm_key == "pp":
+            n = Prod()
+            n.strictness = -22.42
+        return n
 
     @classmethod
     def _operate(cls, operator: Operator, *operands: Iterable[Operand]) -> Operand:
@@ -265,24 +279,20 @@ class Norm(ABC):
                 in units of sample intervals of the Cartesian product."""
 
 
-# noinspection PyAbstractClass
-class SimpleNorm(Norm):
-    """Norms created without arguments are descended from this practically abstract class.
-
-    Why can't it be explicitly abstract???."""
-
-
-# Here I'll implement the SimpleNorms from least to most strict (strong and, weak or to the reverse):
+# Here I'll implement the simple Norms from least to most strict (strong and, weak or to the reverse):
 # I would provide more t-norms (Schweizer, Frank, Yager, Aczél–Alsina, Dombi, Sugeno–Weber, etc.),
 # but I don't know how to interpret them continuously, in integral forms (which is necessary for the
 # fuzzy arithmetic)---I only know how to do Riemann and geometric (product) integrals.  But that should be plenty!
 
 
-class Lax(SimpleNorm):
+class Lax(Norm):
     """Defines the lax (``lx``) norm pair.
 
        Lax is my own invention---the opposite extreme from :class:`Drastic` (``dd``),
        and fodder for :class:`CompoundNorm`, allowing the full range of strictness."""
+
+    def __str__(self):
+        return str(f"The lax norm (inverse of drastic)(strictness = {self.strictness}).")
 
     def _and(self, a: Operand, b: Operand) -> np.ndarray:
         # equivalent:  if a == 0: r = b;  elif b == 0: r = a;  else: r = 1
@@ -303,8 +313,11 @@ class Lax(SimpleNorm):
         return np.amin(z) if np.amax(z) == 1 else 0
 
 
-class MinMax(SimpleNorm):
+class MinMax(Norm):
     """Defines the Gödel-Zadeh (``mm``) (minimum / maximum) norm pair."""
+
+    def __str__(self):
+        return str(f"The Gödel-Zadeh (min/max) norm (strictness = {self.strictness}).")
 
     def _and(self, a: Operand, b: Operand) -> np.ndarray:
         return np.fmin(a, b)
@@ -319,8 +332,11 @@ class MinMax(SimpleNorm):
         return np.amax(z)
 
 
-class Hamacher(SimpleNorm):
+class Hamacher(Norm):
     """Defines the Hamacher (``hh``) norm pair."""
+
+    def __str__(self):
+        return str(f"The Hamacher norm (strictness = {self.strictness}).")
 
     def _and(self, a: Operand, b: Operand) -> np.ndarray:
         # equivalent:  return 0 if a == b == 0 else a * b / (a + b - a * b)  # Could get +inf near a==b==0?
@@ -343,8 +359,11 @@ class Hamacher(SimpleNorm):
         return s / (1 + p)
 
 
-class Prod(SimpleNorm):
+class Prod(Norm):
     """Defines the Goguen (``pp``) (product / probabilistic sum) norm pair."""
+
+    def __str__(self):
+        return str(f"The Goguen (product / probabilistic sum) norm (strictness = {self.strictness}).")
 
     def _and(self, a: Operand, b: Operand) -> np.ndarray:
         return a * b
@@ -362,8 +381,11 @@ class Prod(SimpleNorm):
         return (s - p) / line_length
 
 
-class Einstein(SimpleNorm):
+class Einstein(Norm):
     """Defines the Einstein (``ee``) norm pair."""
+
+    def __str__(self):
+        return str(f"The Einstein norm (strictness = {self.strictness}).")
 
     def _and(self, a: Operand, b: Operand) -> np.ndarray:
         return a * b / (a * b - a - b + 2)
@@ -382,8 +404,11 @@ class Einstein(SimpleNorm):
         return s / (1 + p)
 
 
-class Nilpotent(SimpleNorm):
+class Nilpotent(Norm):
     """Defines the Kleene-Dienes (``nn``) (nilpotent) norm pair."""
+
+    def __str__(self):
+        return str(f'The Kleene-Dienes ("nilpotent") norm (strictness = {self.strictness}).')
 
     def _and(self, a: Operand, b: Operand) -> np.ndarray:
         # equivalent:  min(a, b) if a + b > 1 else 0
@@ -403,8 +428,11 @@ class Nilpotent(SimpleNorm):
         return np.amax(z) if s < 1 else 1
 
 
-class Lukasiewicz(SimpleNorm):
+class Lukasiewicz(Norm):
     """Defines the Łukasiewicz / bounded sum (``lb``) norm pair."""
+
+    def __str__(self):
+        return str(f"The Łukasiewicz / bounded sum norm (strictness = {self.strictness}).")
 
     def _and(self, a: Operand, b: Operand) -> np.ndarray:
         # equivalent:  max(0.0, a + b - 1)
@@ -425,8 +453,11 @@ class Lukasiewicz(SimpleNorm):
         return min(s, 1)
 
 
-class Drastic(SimpleNorm):
+class Drastic(Norm):
     """Defines the drastic (``dd``) norm pair."""
+
+    def __str__(self):
+        return str(f"The drastic norm (inverse of lax)(strictness = {self.strictness}).")
 
     def _and(self, a: Operand, b: Operand) -> np.ndarray:
         # equivalent:  if a == 1: r = b;  elif b == 1: r = a;  else: r = 0
@@ -446,39 +477,38 @@ class Drastic(SimpleNorm):
         return np.amax(z) if np.amin(z) == 0 else 1
 
 
-# noinspection PyAbstractClass
-class ParameterizedNorm(SimpleNorm):
-    """Norms created with arguments are descended from this practically abstract class.
+# So far I have two parameterized types: Hamacher and a general strictness norm.
 
-    The __init__ method of its subclasses should take user parameter(s) on [0,100] or [-100,100]
-    and map them onto whatever their t-norms/co-norms require.
-
-    Why can't it be explicitly abstract???"""
-
-
-class ParameterizedHamacher(ParameterizedNorm):
+class ParameterizedHamacher(Norm):
     """Defines the parameterized version of the Hamacher (`hhp`) norm pair.
 
     Arg:
-        user_parameter: is expected to be on [0,100] and must be >=0 (it will be clipped if it is not).
+        p: is expected to be on [0,100] and must be >=0 (it will be clipped if it is not).
 
-        +---------------------+----------------------+
-        | ``user_parameter=`` |    equivalent norm   |
-        +=====================+======================+
-        | 0                   |    Hamacher (``hh``) |
-        +---------------------+----------------------+
-        | 50                  |    product (``pp``)  |
-        +---------------------+----------------------+
-        | 100                 |    drastic (``dd``)  |
-        +---------------------+----------------------+
+        +--------+----------------------+
+        | ``p=`` |    equivalent norm   |
+        +========+======================+
+        | 0      |    Hamacher (``hh``) |
+        +--------+----------------------+
+        | 50     |    product (``pp``)  |
+        +--------+----------------------+
+        | 100    |    drastic (``dd``)  |
+        +--------+----------------------+
 
     """
 
-    def __init__(self, user_parameter=0.0):
+    def __str__(self):
+        return str(f"A parameterized Hamacher norm, p = {self.up:.4g} (strictness ≈ {self.strictness:.4g}).")
+
+    def __init__(self, p=0.0):
         """Maps the user parameter on [0,100] to the behavior described in :class:`ParameterizedHamacher`:
         50 = Prod, 0 and 100 are very close to Hamacher and drastic."""
-        user_parameter = max(user_parameter, 0)  # (user_parameter, self._p) =  (0, .001), (50, 1), (100, 1000)
-        self._p = 0 if user_parameter < 0 else 10 ** (.06 * user_parameter - 3)
+        self.up = max(p, 0)  # (user_parameter, self._p) =  (0, .001), (50, 1), (100, 1000)
+        self._p = 0 if p < 0 else 10 ** (.06 * p - 3)
+        if p < 50:
+            self.strictness = -49.78 + (p / 50) * 27.36
+        else:
+            self.strictness = -22.42 + ((p - 50) / 50) * 122.42
 
     def _and(self, a: Operand, b: Operand) -> np.ndarray:
         # equivalent:   0 if self._p == a == b == 0 else a * b / (self._p + (1 - self._p) * (a + b - a * b))
@@ -504,14 +534,19 @@ class CompoundNorm(Norm):
     """Defines a linear combination of two other norms according to a weight on [0,100].
 
     Args:
-        n1, n2: a :class:`SimpleNorm` or its name (a 2--3 letter code).
+        n1, n2: a :class:`Norm` or its name (a 2--3 letter code).
         w: a parameter on [0,100].  If ``n2`` is stricter than ``n1``,
            then ``w`` may be thought of as a strictness parameter."""
 
-    def __init__(self, n1: SimpleNorm | str, n2: SimpleNorm | str, w: float):
+    def __init__(self, n1: Norm | str, n2: Norm | str, w: float):
         self._n1 = Norm._simple_factory(n1) if isinstance(n1, str) else n1
         self._n2 = Norm._simple_factory(n2) if isinstance(n2, str) else n2
         self._w = w
+        self.strictness = ((100 - w) * self._n1.strictness + w * self._n2.strictness) / 100
+
+    def __str__(self):
+        return str(f"A compound norm (strictness = {self.strictness:.4g}): "
+                   f"\n {100 - self._w}% {self._n1}, and\n {self._w}% {self._n2}")
 
     def _combination(self, r1: Operand, r2: Operand) -> Operand:
         return ((100 - self._w) * r1 + self._w * r2) / 100  # (w, result) = (0, n1), (50, avg(n1,n2)), (100, n2)
@@ -532,6 +567,8 @@ class CompoundNorm(Norm):
 # noinspection PyAbstractClass
 class StrictnessNorm(Norm):
     """Defines a norm of given strictness, on a range from [-100,100] (hard limit).
+
+    Really, it's a factory for creating :class:`.CompoundNorm`\\ s that achieve a given strictness.
 
     Arg:
         strictness: the tendency to extreme values---**and** more false and **or** more true.
@@ -559,6 +596,8 @@ class StrictnessNorm(Norm):
             |      100.00| ``'dd'``   |drastic                          |
             +------------+------------+---------------------------------+
 
+            The norm is simply obtained by a linear combination of two of the above.
+
     """
 
     def __new__(cls, strictness: float = 0):
@@ -572,6 +611,9 @@ class StrictnessNorm(Norm):
         w = np.interp(strictness, x, y)
         n = CompoundNorm(name[floor(w)], name[ceil(w)], 100 * (w % 1))
         return n
+
+    def __str__(self):
+        return str(f"A parameterized strictness norm (strictness = {self.strictness}).")
 
 
 # It would be nice to put this module variable at the top of the file:

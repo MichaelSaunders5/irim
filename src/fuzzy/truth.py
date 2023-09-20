@@ -97,26 +97,29 @@ Caution:
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from math import log, log1p, exp
-from typing import Union, ClassVar, Tuple
+from math import log
+from typing import Union, Tuple
 
 import numpy as np
 
 from fuzzy.norm import Norm, default_norm
+
+TruthOperand = Union[float, np.ndarray, int, bool, 'Truth']
+"""A type indicating {:class:`Truth` | ``float`` | ``int`` | ``bool`` | :class:`numpy.ndarray`}.  
+Arrays are intended for private use by :class:`Value`.  The range of values is presumed to be on [0,1]."""
+
+default_threshold: float = .5
+"""The default threshold for defuzzification, used by :meth:`crisp` and ``bool()``.   It is also 
+the point of inflection for the :meth:`weight` method, and the default value for ``Truth`` objects.  
+It should be what you consider as exactly "maybe".  It may be set directly.  
+I like the intuitive default of .5 because it gives equal scope and resolution to either side of "maybe"."""
 
 
 @dataclass
 class Truth(float):
     """A fuzzy unit (or "fit"), representing a degree of truth.
     """
-    Operand = Union[float, np.ndarray, int, bool, 'Truth']
-    """A type indicating {:class:`Truth` | ``float`` | ``int`` | ``bool`` | :class:`numpy.ndarray`}.  
-    Arrays are intended for private use by :class:`Value`.  The range of values is presumed to be on [0,1]."""
-    default_threshold: ClassVar[float] = .5
-    """The default threshold for defuzzification, used by :meth:`crisp` and ``bool()``.   It is also 
-    the point of inflection for the :meth:`weight` method, and the default value for ``Truth`` objects.  
-    It should be what you consider as exactly "maybe".  It may be set directly.  
-    I like the intuitive default of .5 because it gives equal scope and resolution to either side of "maybe"."""
+    # default_threshold: ClassVar[float] = .5.  I moved TruthOperand, default_threshold up there^.  Trouble???
     s: float = field(default=default_threshold)
 
     # This works (maybe because it's a dataclass, but I've read that the following is normally necessary:
@@ -129,8 +132,8 @@ class Truth(float):
     # The methods that deal with getting and setting:
 
     @classmethod
-    def scale(cls, x: Operand = None, dir: str = "in", r: Tuple[float, float] = None,
-              map: str = "lin", clip: bool = False) -> Operand:
+    def scale(cls, x: TruthOperand = None, dir: str = "in", r: Tuple[float, float] = None,
+              map: str = "lin", clip: bool = False) -> TruthOperand:
         """A helper function to map between external variables and fuzzy units.
 
         In general, a complete workflow might resemble the following:
@@ -215,14 +218,14 @@ class Truth(float):
               :meth:`.Value.Dpoints`; and :class:`.Map`.
             """
         if x is None:
-            x = Truth.default_threshold
-        fl = (not isinstance(x, np.ndarray)) or (len(x) == 1)  # To return the same type given.
+            x = default_threshold
+        fl = (not isinstance(x, np.ndarray))  # To return the same type given.
         if dir == "in":  # map from an input variable on [min,max] to a fit representation on [0,1]:
             if r is None:
                 r = (np.min(x), np.max(x))  # Map the whole *used* range to [0,1]
             if r[0] == r[1]:  # This is the limit of the behavior as the condition is approached, but why do it?:
-                x = Truth.default_threshold if (x == r[0]) else inf if (x > r[0]) else -inf
-            if (map == "lin") or (map == "invlin"):
+                x = default_threshold if (x == r[0]) else inf if (x > r[0]) else -inf
+            elif (map == "lin") or (map == "invlin"):
                 x = (x - r[0]) / (r[1] - r[0])  # A
             elif (map == "log") or (map == "invexp"):
                 x = np.log(1 + np.fabs(x - r[0])) / log(1 + abs(r[1] - r[0]))  # B
@@ -231,9 +234,11 @@ class Truth(float):
         if clip:
             x = Truth.clip(x)
         if dir == "out":  # map from a fit representation on [0,1] to an output variable on [min,max]:
-            if (r is None) or (r[0] == r[1]):
+            if r is None:
                 raise ValueError("The output range, r, must be defined.")
-            if (map == "lin") or (map == "invlin"):
+            if r[0] == r[1]:
+                x = r[0]
+            elif (map == "lin") or (map == "invlin"):
                 x = r[0] + (r[1] - r[0]) * x  # inv A
             elif (map == "log") or (map == "invexp"):
                 x = r[0] + np.log(1 + x) * (r[1] - r[0]) * 1.4426950408889634  # inv C (1/log(2))
@@ -281,16 +286,16 @@ class Truth(float):
         return Truth.scale(self.s, "out", range, map, clip)
 
     @staticmethod
-    def is_valid(s: Operand) -> bool:
+    def is_valid(s: TruthOperand) -> bool:
         """``True`` if and only if ``self`` is on [0,1]."""
         return True if (s <= 1) and (s >= 0) else False
 
     @staticmethod
-    def clip(x: Operand) -> Union[float, np.ndarray]:
+    def clip(x: TruthOperand) -> Union[float, np.ndarray]:
         """Restricts the input's value to the domain of fuzzy truth, [0,1], by clipping.
 
         Arg:
-            x: an input :attr:`Operand` to be clipped.
+            x: an input :attr:`TruthOperand` to be clipped.
 
         Return:
             a similar type certain to be on [0,1]."""
@@ -321,7 +326,7 @@ class Truth(float):
         # for consistency, and in case one chooses to implement non-standard negations.
         if norm is None:
             norm = default_norm
-        return Truth(norm.not_(self.s))
+        return norm.not_(self.s)
 
     # Ten binary operators:---
     # ignoring:  tautology (1111), contradiction (0000);
@@ -348,14 +353,14 @@ class Truth(float):
     # First, the basic functions that provide the calculation via the `default_norm`:
     # and_, or_, imp_, con_, iff_, xor_;  nand_, nor_, nimp_, ncon_:
 
-    def and_(self, *other: Operand, norm: Norm = None) -> Truth:
+    def and_(self, *other: TruthOperand, norm: Norm = None) -> Truth:
         """The conjunction ("and", ∧) binary operator [0001].
 
         The truth of such expressions as, "both ``self`` and ``other``".  
         It may be accessed by ``a.and_(b...)`` or ``a & b``.
 
         Args:
-            other: zero or more :attr:`Operand`, since the operation is associative.
+            other: zero or more :attr:`TruthOperand`, since the operation is associative.
             norm: an optional norm.  The default is :attr:`Norm.default_norm`
 
         Returns:
@@ -366,16 +371,17 @@ class Truth(float):
             other = other[0:-1]
         if norm is None:
             norm = default_norm
-        return Truth(norm.and_(self.s, *other))
+        return norm.and_(self, *other)
 
-    def or_(self, *other: Operand, norm: Norm = None) -> Truth:
-        """The disjunction ("inclusive or", ∨) binary operator [0111].
+    def or_(self, *other: TruthOperand, norm: Norm = None) -> Truth:
+        """The disjunction ("inclusive or", ∨)
+        binary operator [0111].
 
         The truth of such expressions as, "either ``self`` or ``other``".  
         It may be accessed by ``a.or_(b...)`` or ``a | b``.
 
         Args:
-            other: zero or more :attr:`Operand`, since the operation is associative.
+            other: zero or more :attr:`TruthOperand`, since the operation is associative.
             norm: an optional norm.  The default is :attr:`Norm.default_norm`
 
         Returns:
@@ -386,32 +392,33 @@ class Truth(float):
             other = other[0:-1]
         if norm is None:
             norm = default_norm
-        return Truth(norm.or_(self.s, *other))
+        return norm.or_(self, *other)
 
-    def imp(self, other: Operand, norm: Norm = None) -> Truth:
+
+    def imp(self, other: TruthOperand, norm: Norm = None) -> Truth:
         """The material implication ("imply", →) binary operator [1101], the converse of :meth:`con`.
 
         The truth of such expressions as, "``self`` implies ``other``", or "if ``self`` then ``other``".  
         It may be accessed by ``a.imp(b)`` or ``a >> b``.
 
         Args:
-            other: one :attr:`Operand`, since the operation is binary.
+            other: one :attr:`TruthOperand`, since the operation is binary.
             norm: an optional norm.  The default is :attr:`Norm.default_norm`
 
         Returns:
             The implication of ``self`` to ``other``, the extent to which ``self`` must result in ``other``."""
         if norm is None:
             norm = default_norm
-        return Truth(norm.or_(norm.not_(self.s), other.s))
+        return norm.or_(norm.not_(self), other)  # Is it right without the .s ???
 
-    def con(self, other: Operand, norm: Norm = None) -> Truth:
+    def con(self, other: TruthOperand, norm: Norm = None) -> Truth:
         """The converse implication ("con", ←) binary operator [1011], the converse of :meth:`imp`.
 
         The truth of such expressions as, "``other`` implies ``self``", or "if ``other`` then ``self``".  
         It may be accessed by ``a.con_(b)`` or ``a << b``.
 
         Args:
-            other: one :attr:`Operand`, since the operation is binary.
+            other: one :attr:`TruthOperand`, since the operation is binary.
             norm: an optional norm.  The default is :attr:`Norm.default_norm`
 
         Returns:
@@ -419,9 +426,9 @@ class Truth(float):
             the extent to which ``other`` must indicate that ``self`` was true."""
         if norm is None:
             norm = default_norm
-        return Truth(norm.or_(self.s, norm.not_(other.s)))
+        return norm.or_(self, norm.not_(other))
 
-    def iff(self, other: Operand, norm: Norm = None) -> Truth:
+    def iff(self, other: TruthOperand, norm: Norm = None) -> Truth:
         """The equivalence or "biconditional" ("iff", ↔) binary operator [1001], the inverse of :meth:`xor`.
 
         It is familiar in Mathematics as "if and only if" and in Electronics as "xnor"
@@ -431,7 +438,7 @@ class Truth(float):
         It may be accessed by ``a.iff(b)`` or ``~(a @ b)``.
 
         Args:
-            other: one :attr:`Operand`, since the operation is binary.
+            other: one :attr:`TruthOperand`, since the operation is binary.
             norm: an optional norm.  The default is :attr:`Norm.default_norm`
 
         Returns:
@@ -439,9 +446,9 @@ class Truth(float):
             the extent to which they occur together but not apart."""
         if norm is None:
             norm = default_norm
-        return Truth(norm.or_(norm.and_(self.s, other.s), norm.and_(norm.not_(self.s), norm.not_(other.s))))
+        return norm.or_(norm.and_(self, other), norm.and_(norm.not_(self), norm.not_(other)))
 
-    def xor(self, other: Operand, norm: Norm = None) -> Truth:
+    def xor(self, other: TruthOperand, norm: Norm = None) -> Truth:
         """The non-equivalence or "exclusive disjunction" ("exclusive or", ⨁) binary operator [0110],
         the inverse of :meth:`iff`.
 
@@ -451,7 +458,7 @@ class Truth(float):
         It may be accessed by ``a.xor(b)`` or ``a @ b``.
 
         Args:
-            other: one :attr:`Operand`, since the operation is binary.
+            other: one :attr:`TruthOperand`, since the operation is binary.
             norm: an optional norm.  The default is :attr:`Norm.default_norm`
 
         Returns:
@@ -459,41 +466,41 @@ class Truth(float):
             the extent to which they occur apart but not together."""
         if norm is None:
             norm = default_norm
-        return Truth(norm.and_(norm.or_(self.s, other.s), norm.not_(norm.and_(self.s, other.s))))
+        return norm.and_(norm.or_(self, other), norm.not_(norm.and_(self, other)))
 
-    def nand(self, other: Operand, norm: Norm = None) -> Truth:
+    def nand(self, other: TruthOperand, norm: Norm = None) -> Truth:
         """The alternative denial ("nand", ↑) binary operator [1110], the inverse of :meth:`and_`.
 
         The truth of such expressions as, "``self`` and ``other`` cannot occur together".
         It may be accessed by ``a.nand(b)`` or ``~(a & b)``.
 
         Args:
-            other: one :attr:`Operand`, since the operation is binary.
+            other: one :attr:`TruthOperand`, since the operation is binary.
             norm: an optional norm.  The default is :attr:`Norm.default_norm`
 
         Returns:
             The inverse conjunction of `self` and ``other``, the extent to which they are not both true."""
         if norm is None:
             norm = default_norm
-        return Truth(norm.not_(norm.and_(self.s, other.s)))
+        return norm.not_(norm.and_(self, other))
 
-    def nor(self, other: Operand, norm: Norm = None) -> Truth:
+    def nor(self, other: TruthOperand, norm: Norm = None) -> Truth:
         """The joint denial ("nor", ↓) binary operator [1000], the inverse of :meth:`or_`.
 
         The truth of such expressions as, "neither ``self`` nor ``other``".
         It may be accessed by ``a.nor(b)`` or ``~(a | b)``.
 
         Args:
-            other: one :attr:`Operand`, since the operation is binary.
+            other: one :attr:`TruthOperand`, since the operation is binary.
             norm: an optional norm.  The default is :attr:`Norm.default_norm`
 
         Returns:
             The inverse disjunction of ``self`` and ``other``, the extent to which both are false."""
         if norm is None:
             norm = default_norm
-        return Truth(norm.not_(norm.or_(self.s, other.s)))
+        return norm.not_(norm.or_(self, other))
 
-    def nimp(self, other: Operand, norm: Norm = None) -> Truth:
+    def nimp(self, other: TruthOperand, norm: Norm = None) -> Truth:
         """The material nonimplication ("nimply", :math:`\\nrightarrow`) binary operator [0010],
         the inverse of :meth:`imp`.
 
@@ -502,7 +509,7 @@ class Truth(float):
         It may be accessed by ``a.nimp(b)`` or ``~(a >> b)``.
 
         Args:
-            other: one :attr:`Operand`, since the operation is binary.
+            other: one :attr:`TruthOperand`, since the operation is binary.
             norm: an optional norm.  The default is :attr:`Norm.default_norm`
 
         Returns:
@@ -510,9 +517,9 @@ class Truth(float):
             the extent to which the presence of ``self`` indicates that ``other`` will not occur."""
         if norm is None:
             norm = default_norm
-        return Truth(norm.and_(self.s, norm.not_(other.s)))
+        return norm.and_(self, norm.not_(other))
 
-    def ncon(self, other: Operand, norm: Norm = None) -> Truth:
+    def ncon(self, other: TruthOperand, norm: Norm = None) -> Truth:
         """The converse non-implication ("ncon", :math:`\\nleftarrow`) binary operator [0100],
         the inverse of :meth:`con`.
 
@@ -520,7 +527,7 @@ class Truth(float):
         It may be accessed by ``a.ncon(b)`` or ``~(a << b)``.
 
         Args:
-            other: one :attr:`Operand`, since the operation is binary.
+            other: one :attr:`TruthOperand`, since the operation is binary.
             norm: an optional norm.  The default is :attr:`Norm.default_norm`
 
         Returns:
@@ -528,7 +535,7 @@ class Truth(float):
             the extent to which ``other`` indicates that ``self`` was false."""
         if norm is None:
             norm = default_norm
-        return Truth(norm.and_(norm.not_(self.s), other.s))
+        return norm.and_(norm.not_(self), other)
 
     # One more binary operator peculiar to fuzzy technique:  weight:
 
@@ -581,7 +588,7 @@ class Truth(float):
               This is so :class:`.Truth`-valued expressions might conveniently be used as weights.
 
               """
-        th = .5 if Truth.default_threshold <= 0 or Truth.default_threshold >= 1 else Truth.default_threshold
+        th = .5 if default_threshold <= 0 or default_threshold >= 1 else default_threshold
         k = -3.912023005428146 / np.log(.0096 * abs(w) + .02)
         k = 1 / k if w < 0 else k
         if self.s <= th:
@@ -630,7 +637,7 @@ class Truth(float):
 
     def __and__(self, other: Truth) -> Truth:
         """Overloads the binary ``&`` (bitwise and) operator."""
-        return Truth.and_(self, other)
+        return Truth.and_(self, Truth(float(other), clip=True))
 
     def __rand__(self, other: Truth) -> Truth:
         """Ensures that the overloading of ``&`` works as long as one operand is a ``Truth`` object."""
@@ -638,7 +645,7 @@ class Truth(float):
 
     def __or__(self, other: Truth) -> Truth:
         """Overloads the binary ``|`` (bitwise or) operator."""
-        return Truth.or_(self, other)
+        return Truth.or_(self, Truth(float(other), clip=True))
 
     def __ror__(self, other: Truth) -> Truth:
         """Ensures that the overloading of ``|`` works as long as one operand is a ``Truth`` object."""
@@ -646,7 +653,7 @@ class Truth(float):
 
     def __rshift__(self, other: Truth) -> Truth:
         """Overloads the binary ``>>`` (bitwise right shift) operator."""
-        return Truth.imp(self, other)
+        return Truth.imp(self, Truth(float(other), clip=True))
 
     def __rrshift__(self, other: Truth) -> Truth:
         """Ensures that the overloading of ``>>`` works as long as one operand is a ``Truth`` object."""
@@ -654,7 +661,7 @@ class Truth(float):
 
     def __lshift__(self, other: Truth) -> Truth:
         """Overloads the binary ``<<`` (bitwise left shift) operator."""
-        return Truth.con(self, other)
+        return Truth.con(self, Truth(float(other), clip=True))
 
     def __rlshift__(self, other: Truth) -> Truth:
         """Ensures that the overloading of ``<<`` works as long as one operand is a ``Truth`` object."""
@@ -662,7 +669,7 @@ class Truth(float):
 
     def __matmul__(self, other: Truth) -> Truth:
         """Overloads the binary ``@`` (matrix product) operator."""
-        return Truth.xor(self, other)
+        return Truth.xor(self, Truth(float(other), clip=True))
 
     def __rmatmul__(self, other: Truth) -> Truth:
         """Ensures that the overloading of ``@`` works as long as one operand is a ``Truth`` object."""
@@ -685,7 +692,9 @@ class Truth(float):
     def __rxor__(self, other: float) -> Truth:
         """Ensures that the overloading of ``^`` works as long as one operand is a ``Truth`` object."""
         # This gets sent to the magic method version to deal with the truth scaling.
-        return Truth.__xor__(Truth(float(other), clip=True), self)
+        if isinstance(self, Truth):
+            self = self.to_float(range=(-100, 100))
+        return Truth.weight(Truth(float(other), clip=True), self)
 
     # a trivial point:
 

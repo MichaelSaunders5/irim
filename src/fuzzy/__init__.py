@@ -92,5 +92,5 @@ very well?
 
 overviews of the three families ...
 """
-__all__ = ["norm", "truth", "value", "operator", "crisp"]
+__all__ = ["norm", "truth", "number", "literal", "operator", "crisp"]
 # 291.4 9/3

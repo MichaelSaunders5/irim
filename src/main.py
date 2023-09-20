@@ -1,11 +1,67 @@
 # Here is where I am testing or playing around or something.
-import matplotlib.pyplot as plt
-import sys
-from math import  cos, pi, nan, inf
 # from fuzzy.operator import *
-from fuzzy.number import *
-# import math
-import numpy as np
+from fuzzy.literal import *
+from fuzzy.truth import *
+from fuzzy.operator import *
+
+# fuzzy_ctrl(norm={'n1':"str", 'n1p':[-80], 'n2':"hhp", 'n2p':[20], 'cnp':70})
+# fuzzy_ctrl_show()
+
+# t = Triangle(-.9,0.1,1.1, elsewhere=0, points=[(2, .8)])
+# a = Triangle(0, 4, 8, elsewhere=1)
+# b = Triangle(4, 8, 12, elsewhere=0)
+a = Trapezoid(0, 2, 4, 6, elsewhere=0, points=[(3, .2)])
+b = Trapezoid(2, 4, 6, 8, elsewhere=0)  #, points=[(0,.5), (1,.5), (2,.5), (3,.5), (4,.5), (5,.5), (6,.5), (7,.5), (8,.5), (9,.5)]
+c = Trapezoid(4, 6, 8, 10, elsewhere=0)
+# t = Not(a)
+# t = Imp(a, b)
+# t = Con(a, b)
+# t = Iff(a, b)
+# t = Xor(a, b)
+# t = Nand(a, b)
+# t = Nor(a, b)
+# t = Nimp(a, b)
+# t = Ncon(a, b)
+# t = And(a, b)
+# t = Or(a, b, c)
+# print(t)
+# n = t._operate(20)
+# print(n)
+# print(n.cd)
+# print(n.cn)
+# print(n.cv)
+# print(n.ct)
+t.display()
+
+# print(t.t(1))
+# z, p, o = Truth(0), Truth(.5), Truth(1),
+# print(f"a>>b: (0, {t.t(0)} = {z>>z},  ")
+# print(f"a>>b: (1, {t.t(1)} = {p>>z},  ")
+# print(f"a>>b: (2, {t.t(2)} = {o>>z},  ")
+# print(f"a>>b: (3, {t.t(3)} = {o>>p},  ")
+# print(f"a>>b: (4, {t.t(4)} = {o>>o},  ")
+# print(f"a>>b: (5, {t.t(5)} = {p>>o},  ")
+# print(f"a>>b: (6, {t.t(6)} = {z>>o},  ")
+# print(f"a>>b: (7, {t.t(7)} = {z>>p},  ")
+# print(f"a>>b: (8, {t.t(8)} = {z>>z},  ")
+# print(f"a>>b: (9, {t.t(9)} = {z>>z},  ")
+# print(f"Imp object:---\n  {t}")
+
+# t = t._expression_as_numerical(.01)
+# print(f"_expression_as_numerical:---\n    {t}")
+# d = t._get_domain()
+# print({d})
+# print(f"_expression_as_numerical._get_domain:---  {d}")domain=(1.95,2.05)
+# a.display()
+# b.display()
+# t.display()
+
+# a_function = Triangle(1, 2, 3)
+# tr = Trapezoid(1, 2, 3, 4)
+# a_point = Exactly(8)
+# a_function.xv, a_function.xt = a_point.xv, a_point.xt
+# print(a_function.t(7))
+# print(a_function.t(8))
 
 # f = Truth(.1)
 # mf = Truth(.4)
@@ -39,14 +95,6 @@ import numpy as np
 
 # TODO: una: l/a; bin: l/a;  ass: l/a;  width/focus, outputs, crisp etc.
 
-
-
-d = Domain((2, 3))
-t = tuple(sorted((3,2)))
-print(t)
-print(type(t))
-print(d)
-print(type(d))
 
 # # Here's a way to view fuzzy numbers (1D functions):
 # def plot(t: Value):
