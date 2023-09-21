@@ -409,7 +409,7 @@ class Truth(float):
             The implication of ``self`` to ``other``, the extent to which ``self`` must result in ``other``."""
         if norm is None:
             norm = default_norm
-        return norm.or_(norm.not_(self), other)  # Is it right without the .s ???
+        return norm.or_(norm.not_(self), other)
 
     def con(self, other: TruthOperand, norm: Norm = None) -> Truth:
         """The converse implication ("con", ←) binary operator [1011], the converse of :meth:`imp`.

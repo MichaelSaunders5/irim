@@ -10,10 +10,14 @@ from fuzzy.operator import *
 # t = Triangle(-.9,0.1,1.1, elsewhere=0, points=[(2, .8)])
 # a = Triangle(0, 4, 8, elsewhere=1)
 # b = Triangle(4, 8, 12, elsewhere=0)
-a = Trapezoid(0, 2, 4, 6, elsewhere=0, points=[(3, .2)])
-b = Trapezoid(2, 4, 6, 8, elsewhere=0)  #, points=[(0,.5), (1,.5), (2,.5), (3,.5), (4,.5), (5,.5), (6,.5), (7,.5), (8,.5), (9,.5)]
+a = Trapezoid(0, 2, 4, 6, elsewhere=0, points=[(3, .2), (8, 1)])
+b = Trapezoid(2, 4, 6, 8, elsewhere=0, points=[(3, .2), (2.5, .5)])  #, points=[(0,.5), (1,.5), (2,.5), (3,.5), (4,.5), (5,.5), (6,.5), (7,.5), (8,.5), (9,.5)]
 c = Trapezoid(4, 6, 8, 10, elsewhere=0)
+
 # t = Not(a)
+# t = Negative(a)
+# t = Reciprocal(a)
+# t = Absolute(a)
 # t = Imp(a, b)
 # t = Con(a, b)
 # t = Iff(a, b)
@@ -21,16 +25,12 @@ c = Trapezoid(4, 6, 8, 10, elsewhere=0)
 # t = Nand(a, b)
 # t = Nor(a, b)
 # t = Nimp(a, b)
-# t = Ncon(a, b)
-# t = And(a, b)
+# c = Ncon(a, b)
+t = And(a, b, c, norm={'n1':"str", 'n1p':[-80], 'n2':"hhp", 'n2p':[20], 'cnp':70})    #, norm={'n1':"str", 'n1p':[-80], 'n2':"hhp", 'n2p':[20], 'cnp':70})
 # t = Or(a, b, c)
-# print(t)
-# n = t._operate(20)
-# print(n)
-# print(n.cd)
-# print(n.cn)
-# print(n.cv)
-# print(n.ct)
+
+print(t)
+
 t.display()
 
 # print(t.t(1))
@@ -188,10 +188,7 @@ t.display()
 # print(f"y={y}, 100*y={100*y}, y.not_()={y.not_()}, not y={not y}, ~y={~y}")
 f = .499
 # print(f"f={f}, 100*f={100*f}") # , f.not_()={f.not_()}, ~f={~f}
-i = 0
-# print(f"i={i}, 100*i={100*i}, ~i={~i}, not i={not i}")
-b = True
-# print(f"b={b}, 100*b={100*b}, ~b={~b}, not b={not b}")
+
 
 # c = Truth(.4)
 # d = Truth(.5)

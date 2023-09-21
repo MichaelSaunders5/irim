@@ -181,6 +181,14 @@ class FuzzyNumber(ABC):
         * :meth:`._get_domain`, which returns the domain over which
           the continuous part of :math:`t(v)` is explicitly defined."""
 
+    maximum_precision = 1e6
+    """Limits the number of samples in numerical representations.
+    
+    Certain operations (e.g. the reciprocal) can explode the defined domain and lead to calls for huge numbers of 
+    samples.  This constant prevents overflows in such cases.  If you have an expression with this problem, set 
+    ``allowed_domain`` to the region you're interested it---then all the precision you use will be focused on 
+    the domain that matters."""
+
     def __init__(self, elsewhere: float = 0):
         """Args:
             elsewhere:  The truth for values that are otherwise undefined (the default is 0)."""
@@ -246,7 +254,7 @@ class FuzzyNumber(ABC):
         """
 
     @abstractmethod
-    def t(self, v: float) -> float:
+    def t(self, v: Union[np.ndarray, float]) -> Union[np.ndarray, float]:
         """Given a value, return its truth.
 
         It should refer to, in order of priority:  the exceptional points, the continuous function,
@@ -275,7 +283,10 @@ class FuzzyNumber(ABC):
         elif span == 0:
             precision = 1  # continuous domain is a point.  Trouble?
         else:
-            precision = ceil(span / resolution)  # number of sample points in each continuous part
+            if span > FuzzyNumber.maximum_precision * resolution:
+                precision = FuzzyNumber.maximum_precision
+            else:
+                precision = ceil(span / resolution)  # number of sample points in each continuous part
             precision = precision + 1 if (precision % 2) == 0 else precision  # Insist on odd precisions?
         numerical = self._get_numerical(precision, allowed_domain)  # only seeks allowed domain
         if allowed_domain is not None:  # Impose an extreme domain, if required:
@@ -588,20 +599,20 @@ class Literal(FuzzyNumber):  # user only implements _sample
                 ct[-1] = 2 * ct[-2] - ct[-3]
         return _Numerical(cd, cn, cv, ct, xv, xt, self.e)
 
-    def t(self, v: float) -> float:
-        """Returns the truth of a given value."""
-        t = self.e
-        xt = _t_for_v_in_xv(v, self.xv, self.xt)
-        if xt is not None:
-            return xt
-        if self.uniform or (self.discrete is not None):
-            if self.uniform and ((v - self.origin) / self.step).is_integer():
-                t = self._sample(np.array([v]))[0]
-            if (self.discrete is not None) and (v in self.discrete):
-                t = self._sample(np.array([v]))[0]
-        elif (self.d is not None) and self.d.contains(v):
-            t = self._sample(np.array([v]))[0]
-        return _guard(t)
+    def t(self, v: Union[np.ndarray, float]) -> Union[np.ndarray, float]:
+        """Returns the truth of given values."""
+        a = isinstance(v, np.ndarray)
+        v = np.atleast_1d(v)
+        e = np.full_like(v, self.e)
+        c = self._sample(v)
+        c_e = np.where((v < self.d[0]) | (v > self.d[1]), e, c)
+        for i, value in enumerate(v):
+            j = np.where(value == self.xv)[0]
+            if j is None or len(j) == 0:
+                continue
+            c_e[i] = self.xt[j]
+            c_e = _guard(c_e)
+        return c_e if a else c_e[0]
 
 
 class _Numerical(FuzzyNumber):  # user doesn't see it!  dataclass?
@@ -686,8 +697,9 @@ class _Numerical(FuzzyNumber):  # user doesn't see it!  dataclass?
         return _Numerical(num.cd, num.cn, num.cv, num.ct, new_xv, new_xt, num.e)
 
     def _sample(self, v: Union[np.ndarray, float], interp: Interpolator = None) -> Union[np.ndarray, float]:
-        """Given a value, return its truth"""
-        f = isinstance(v, float)
+        """Returns the truth of given values, not considering exceptional points."""
+        a = isinstance(v, np.ndarray)
+        v = np.atleast_1d(v)
         if self.cd is None:
             t = np.full_like(v, self.e)
         else:
@@ -697,14 +709,15 @@ class _Numerical(FuzzyNumber):  # user doesn't see it!  dataclass?
             outside = np.where((v < self.cv[0]) | (v > self.cv[-1]))
             t[outside] = self.e
             t = _guard(t)
-        return float(t) if f else t
+        return t if a else t[0]
 
     def t(self, v: Union[np.ndarray, float], interp: Interpolator = None) -> Union[np.ndarray, float]:
-        """Given a value, return its truth"""
+        """Returns the truth of given values."""
+        a = isinstance(v, np.ndarray)
+        v = np.atleast_1d(v)
         c_e = self._sample(v, interp)
         if self.xv is not None:
-            x = np.where(np.in1d(v, self.xv, assume_unique=True))   # where v is in xv
-            y = np.where(np.in1d(self.xv, v, assume_unique=True))   # where xv is in v
+            x = np.where(np.in1d(v, self.xv, assume_unique=True))  # where v is in xv
+            y = np.where(np.in1d(self.xv, v, assume_unique=True))  # where xv is in v
             c_e[x] = self.xt[y]
-        return c_e    # t = _t_for_v_in_xv(v, self.xv, self.xt)
-
+        return c_e if a else c_e[0]

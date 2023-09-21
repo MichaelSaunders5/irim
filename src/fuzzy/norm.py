@@ -197,11 +197,24 @@ class Norm(ABC):
 
         Args:
             operator: any commutative binary operator defined by a subclass of :class:`Norm` (i.e., ∧ or ∨).
-            operands: a list of :class:`Truth` or :class:`numpy.ndarray` of fits (which must all be of the same length).
+            operands: There are two possible combinations:
+
+                * An iterable of objects which may be any mixture of:
+
+                    * :class:`Truth` or other fit-valued numbers,
+                    * :class:`numpy.ndarray`\\ s of identical length, containing fits.
+
+                * A single :class:`numpy.ndarray` containing fits.
 
         Returns:
-            a single :class:`numpy.ndarray`, if any were input, or else a single fit."""
-        item = list(operands)
+
+            * In the first case: a single :class:`numpy.ndarray`, if any were input, or else a single fit---the
+              result of all the iterable's elements operated together.
+            * In the second case: a single fit---the result of all the array's elements operated together."""
+        if isinstance(operands[0], np.ndarray) and len(operands) == 1:
+            item = operands[0]
+        else:
+            item = list(operands)
         for i in range(1, len(item)):
             item[0] = operator(item[0], item[i])
         return item[0]
@@ -296,9 +309,9 @@ class Lax(Norm):
 
     def _and(self, a: Operand, b: Operand) -> np.ndarray:
         # equivalent:  if a == 0: r = b;  elif b == 0: r = a;  else: r = 1
-        c = b * a.logical_not + a * b.logical_not
-        r = c.logical_not - (a.logical_not * b.logical_not)
-        return r + c
+        c = b * np.logical_not(a) + a * np.logical_not(b)
+        r = np.where((a != 0) & (b != 0), np.ones_like(a), c)
+        return r
 
     def _or(self, a: Operand, b: Operand) -> np.ndarray:
         # equivalent:  if a == 1: r = b;  elif b == 1: r = a;  else: r = 0
@@ -467,8 +480,9 @@ class Drastic(Norm):
 
     def _or(self, a: Operand, b: Operand) -> np.ndarray:
         # equivalent:  if a == 0: r = b;  elif b == 0: r = a;  else: r = 1
-        c = b * a.logical_not + a * b.logical_not
-        return c + c.logical_not
+        c = b * np.logical_not(a) + a * np.logical_not(b)
+        r = np.where((a != 0) & (b != 0), np.ones_like(a), c)
+        return r
 
     def _and_integral(self, z: np.ndarray, line_length: float) -> float:
         return np.amin(z) if np.amax(z) == 1 else 0

@@ -167,7 +167,7 @@ def safe_div(x: Union[float, np.ndarray], y: Union[float, np.ndarray]) -> Union[
     with np.errstate(divide='ignore', invalid='ignore'):
         r = np.divide(x, y)
         # r = x / y
-    r = np.nan_to_num(r, nan=0, posinf=float_info.max, neginf=-float_info.max)
+    r = np.nan_to_num(r, nan=0, posinf=float_info.max / 2, neginf=-float_info.max / 2)
     return r
 
 
@@ -285,18 +285,16 @@ class Operator(FuzzyNumber, ABC):
             if isinstance(a, Operator):
                 a._set_attributes(**kwargs)
 
-    def _prepare_operand(self, a: Operand, **kwargs) -> Operand:
+    def _prepare_operand(self, a: Operand, **kwargs) -> None:
         """Operators get their rare attributes set here (or they will keep those given,
         or they will find the global defaults)."""
         if isinstance(a, Operator):
             a._set_attributes(**kwargs)
-        return a
 
     @abstractmethod
-    def _op(self, *args) -> _Numerical:
+    def _op(self, *args) -> Union[np.ndarray, float]:
         """In each Operator class, this meth defines it.  You give it what it needs and it  gives you the result.
         Who calls it?  _operate calls something that calls it"""
-
 
     def d_op(self, inv: bool, *d: Domain) -> Domain:
         """Tells how a given domain will be transformed by the operation.
@@ -314,12 +312,6 @@ class Operator(FuzzyNumber, ABC):
         samples [0,5] of its operand to create the numerical it will return.
          """
 
-    # def t(self, v: float) -> float:
-    #     t = []
-    #     for a in self.operands:
-    #         t.append(a.t(v))
-    #     # Then do what _operate does?
-
     # abstract methods:  _get_domain, _get_numerical, t.  Can I do anything here?
 
 
@@ -331,27 +323,22 @@ class LogicOperator(Operator, ABC):
         if isinstance(a, (int, float, bool, Truth)):  # A :class:`.Truth` is a float, so they are covered.
             a = Truthy(a)  # It's a Literal, so it doesn't have operator attributes.
         else:  # It's an operator, so it does have operator attributes.
-            a = super()._prepare_operand(a, **kwargs)
+            super()._prepare_operand(a, **kwargs)
         return a
 
     def _binary_logic_op(self, n: Norm, sampling_method: str, interp: Interpolator,
                          a: _Numerical, b: _Numerical) -> _Numerical:
         """general service for binary logic operators, just send it the Truth operator."""
 
-        # sorry.  To complicated to type hint. see below
-        # So, it's going to get str code letter + four arrays, like: na.xv, na.xt, nb.xv, nb.xt, "x"|"c"
-        # or, str code letter + two floats, like: na.e, nb.e, "e"
         def op(t1: TruthOperand, t2: TruthOperand) -> TruthOperand:
             return self._op(n, t1, t2)
 
         r = _Numerical(self.d_op(False, a.cd, b.cd), 1, None, None, None, None, op(a.e, a.e))
-        print(f"r.cd:  {r.cd}")
         if (a.xv is not None) or (b.xv is not None):
             axv, bxv = a.xv if a.xv is not None else np.empty(0), b.xv if b.xv is not None else np.empty(0)
             r.xv = np.sort(np.unique(np.append(axv, bxv)))
             r.xt = np.empty_like(r.xv)
             r.xt = op(a.t(r.xv, interp), b.t(r.xv, interp))
-
         if (a.cd is not None) or (b.cd is not None):
             precision = max(a.cn, b.cn)
             points = np.empty(0)
@@ -373,45 +360,57 @@ class LogicOperator(Operator, ABC):
         r.cn = len(r.cv)
         return r
 
-    def ass_l_op(self, situation: str, precision: int, operator: Callable, *operand):
-        """general service for associative logic operators, just send it the ``operator``."""
-        # sorry.  To complicated to type hint. see below
-        # So, it's going to get str code letter + op + N 4-tuples of arrays, like: (na.cv, na.ct, na.xv, na.xt) "x|c"
-        # or, str code letter + op + N  floats, like: na.e, nb.e, ... "e"
-        n = getattr(self, 'norm', default_norm)
-        a, b = self.operands[0], self.operands[1]
-        sampling_method = getattr(self, 'default_sampling_method', default_sampling_method)
-        if situation == "x":
-            av, at, bv, bt = operand[0], operand[1], operand[2], operand[3]
-            rv, rt = None, None
-            av, bv = np.empty(0) if av is None else av, np.empty(0) if bv is None else bv
-            rt = np.empty(0) if rv is None else rv
-            rv = np.unique(np.append(av, bv))
-            for v in rv:
-                rt = np.append(rt, operator(a.t(v), b.t(v), n))
-            return rv, rt
-        elif situation == "c":
-            # av, at, bv, bt = operand[0], operand[1], operand[2], operand[3]
-            points = np.array([a.d[0], a.d[1], b.d[0], b.d[1]])
-            points = np.sort(np.unique(points))
-            # sample each interval with precision pts, n.imp(a.t(v), self.b.t(v)) at those points
-            # this is the same for all binary logic, so make it a helper with precision and operator arguments.
-            # write a helper to choose the sample points---add guards on either end.
-            rv = np.empty(0)
-            for interval in range(len(points) - 1):
-                subdomain = Domain((points[interval], points[interval + 1]))
-                new_v = _get_sample_points(subdomain, precision, sampling_method)
-                rv = np.append(rv, new_v)
-            approx_res_left = rv[1] - rv[0]
-            approx_res_right = rv[-1] - rv[-2]
-            gp = np.array(rv[0] - approx_res_left)
-            rv = np.append(gp, rv)
-            rv = np.append(rv, rv[-1] + approx_res_right)
-            rt = operator(a._sample(rv), b._sample(rv), n)
-            return rv, rt
-        else:  # elsewhere
-            print(f"in ass lop now: {operand}")
-            return operator(operand, n)
+    def _associative_logic_op(self, precision: int, allowed_domain: Domain, n: Norm,
+                              sampling_method: str, interp: Interpolator) -> _Numerical:
+        """general service for associative logic operators, just send it the Truth operator."""
+
+        def op(truths: np.ndarray) -> float:  # the op to use on arrays of truths
+            return self._op(n, truths)
+
+        d, e = [], []
+        for a in self.operands:
+            e.append(a.e)
+            domain = a._get_domain()
+            if domain is None:
+                continue
+            d.append(domain[0])
+            d.append(domain[1])
+        e = op(np.array(e))  # the final elsewhere truth
+        d = np.array(d)
+        cd = Domain((np.min(d), np.max(d)))  # the total union domian
+        d = np.sort(np.unique(d))  # the partition boundaries
+        cv = np.empty(0)
+        for i in range(0, len(d) - 1):  # iterate through the subdomains
+            subdomain = Domain((d[i], d[i + 1]))
+            new_cv = _get_sample_points(subdomain, precision, sampling_method)
+            if new_cv is None:
+                continue
+            new_cv = np.delete(new_cv, -1)  # Remove the last point to avoid duplication of inner points.
+            cv = np.append(cv, new_cv)  # compile sample points
+        gp_left, gp_right = 2 * cv[0] - cv[1], 2 * cd[1] - cv[-1]  # the guard points
+        cv = np.insert(cv, 0, gp_left)
+        cv = np.append(cv, cd[1])
+        cv = np.append(cv, gp_right)
+        cn = len(cv)  # the total number of sample points
+        ct = np.empty([len(self.operands), cn])  # to hold array of truths (operand, sample point)
+        xv = np.empty(0)  # to hold exceptional point values
+        for i, a in enumerate(self.operands):
+            num = a._get_numerical(precision, allowed_domain)  # a numerical version of each
+            ct[i] = num._sample(cv, interp)  # matrix: ct(operand, cv)
+            if num.xv is None:
+                continue
+            xv = np.append(xv, num.xv)  # compile their exception point values
+        for j in range(cn):
+            ct[0][j] = op(ct[:, j])  # op together all the sample points at cv for each operand
+        ct = ct[0]  # now the (cv, ct) define a continuous function t(v)
+        xv = np.sort(np.unique(xv))
+        xt = np.empty([len(self.operands), len(xv)])  # to hold array of truths (operand, exceptional point value)
+        for i, a in enumerate(self.operands):
+            xt[i] = a.t(xv)  # evaluating with .t includes exceptionals, continuous and elsewhere
+        for j in range(len(xv)):
+            xt[0][j] = op(xt[:, j])  # op together all the sample points at each xv for each operand
+        xt = xt[0]  # now the (cv, ct) define a complete set of exceptional points
+        return _Numerical(cd, cn, cv, ct, xv, xt, e)
 
 
 class MathOperator(Operator, ABC):
@@ -422,7 +421,7 @@ class MathOperator(Operator, ABC):
         if isinstance(a, (int, float, bool)):
             a = Exactly(a)  # It's a Literal, so it doesn't have operator attributes.
         else:  # It's an operator, so it does have operator attributes.
-            a = super()._prepare_operand(a, **kwargs)
+            super()._prepare_operand(a, **kwargs)
         return a
     # form Cartesian product AND, calc lines, OR-integrate, resample?
 
@@ -435,8 +434,9 @@ class UnaryOperator(Operator, ABC):
     def __init__(self, a: Operand, **kwargs):
         """It just gets its rare attributes set and prepares its operand."""
         super().__init__(a, **kwargs)
-        a = super()._prepare_operand(a, **kwargs)
         self.operands = [a]
+        super()._prepare_operand(a, **kwargs)
+        print(self.operands[0])
 
     def _get_domain(self) -> Union[Domain, None]:
         """What the domain of the result will be: the domain of the operand, transformed."""
@@ -456,8 +456,16 @@ class UnaryOperator(Operator, ABC):
             interp = getattr(self, 'interpolator', default_interpolator)
             return self._op(n, interp, a)
         if isinstance(self, MathOperator):
-            a.ct, a.xt = self._op(a.ct), self._op(a.xt)
+            a.cd, a.cv, a.xv = self.d_op(False, a.cd), self._op(a.cv), self._op(a.xv)
             return a
+
+    def t(self, v: Union[np.ndarray, float]) -> Union[np.ndarray, float]:
+        """"""
+        if isinstance(self, LogicOperator):
+            n = getattr(self, 'norm', default_norm)
+            return self._op(n, self.operands[0].t(v))
+        if isinstance(self, MathOperator):
+            return self.operands[0].t(self._op(v))
 
 
 class Not(LogicOperator, UnaryOperator):
@@ -465,17 +473,13 @@ class Not(LogicOperator, UnaryOperator):
         a = self.operands[0].__str__()
         return str(f"NOT ({a})")
 
-    def d_op(self, inv: bool, d: Domain) -> Domain:  # noqa
+    def d_op(self, inv: bool, *d: Domain) -> Domain:
         """It only works on one domain, but Pycharm complains if I leave off the star.
         Pycharm doesn't complain when l_op or m_op do the same thing."""
-        return d
+        return d[0]
 
-    def _op(self, n: Norm, t: TruthOperand) -> float:
+    def _op(self, n: Norm, t: TruthOperand) -> TruthOperand:
         return n.not_(t)
-
-    def t(self, v: float) -> float:
-        """"""
-        return self._op(default_norm, self.operands[0].t(v))
 
 
 class Negative(MathOperator, UnaryOperator):
@@ -486,12 +490,8 @@ class Negative(MathOperator, UnaryOperator):
     def d_op(self, inv: bool, *d: Domain) -> Domain:
         return Domain.sort(-d[0][0], -d[0][1])
 
-    def _op(self, v: np.ndarray) -> np.ndarray:
+    def _op(self, v: Union[np.ndarray, float]) -> Union[np.ndarray, float]:
         return -v
-
-    def t(self, v: float) -> float:
-        """"""
-        return self.operands[0].t(-v)
 
 
 class Reciprocal(MathOperator, UnaryOperator):
@@ -499,16 +499,14 @@ class Reciprocal(MathOperator, UnaryOperator):
         a = self.operands[0].__str__()
         return str(f"RECIPROCAL ({a})")
 
-    def d_op(self, inv: bool, d: Domain) -> Domain:  # noqa
+    def d_op(self, inv: bool, *d: Domain) -> Domain:
+        d = d[0]  # Only ever one, but the call needs multiples.
         d0 = safe_div(1, d[0])
         d1 = safe_div(1, d[1])
         return Domain.sort(d0, d1)
 
-    def _op(self, v: np.ndarray) -> np.ndarray:
+    def _op(self, v: Union[np.ndarray, float]) -> Union[np.ndarray, float]:
         return safe_div(1, v)
-
-    def t(self, v: float) -> float:
-        return self.operands[0].t(safe_div(1, v))
 
 
 class Absolute(MathOperator, UnaryOperator):
@@ -516,7 +514,8 @@ class Absolute(MathOperator, UnaryOperator):
         a = self.operands[0].__str__()
         return str(f"ABS ({a})")
 
-    def d_op(self, inv: bool, d: Domain) -> Domain:  # noqa
+    def d_op(self, inv: bool, *d: Domain) -> Domain:
+        d = d[0]  # Only ever one, but the call needs multiples.
         d0, d1 = abs(d[0]), abs(d[1])
         lo, hi = min(d0, d1), max(d0, d1)
         if (d[0] * d[1]) < 0:
@@ -524,29 +523,30 @@ class Absolute(MathOperator, UnaryOperator):
         return Domain((lo, hi))
 
     def _op(self, n: Norm, interp: Interpolator, a: _Numerical) -> _Numerical:
-        """_Numerical and this return different numbers for v < 0.
+        """t and this return different numbers for v < 0.
         This is because I can't represent a double-sided "elsewhere".
         This is also how I handle Inequality and Sigmoid."""
         r = _Numerical(self.d_op(False, a.cd), a.cn, None, None, None, None, n.or_(a.e, a.e))
-        if a.vx is not None:
+        if a.xv is not None:
             r.xv = np.sort(np.unique(np.fabs(a.xv)))
             r.xt = np.empty_like(r.xv)
-            for i in r.xv:
-                v = r.xv[i]
-                r.xt[i] = n.or_(a.t(v, interp), a.t(-v, interp))
+            r.xt = n.or_(a.t(r.xv), a.t(-r.xv))
         if a.cd is not None:
             r.cv = np.sort(np.unique(np.fabs(a.cv)))
             r.ct = np.empty_like(r.cv)
-            for i in r.cv:
-                v = r.cv[i]
-                r.ct[i] = n.or_(a._sample(v, interp), a._sample(-v, interp))
+            r.ct = n.or_(a._sample(r.cv, interp), a._sample(-r.cv, interp))
         return r
 
-    def t(self, v: float) -> float:
+    def t(self, v: Union[np.ndarray, float]) -> Union[np.ndarray, float]:
         """The result at v could come from the truths at v or -v, so I OR those truths together."""
+        operand = self.operands[0]
+        a = isinstance(v, np.ndarray)
+        v = np.atleast_1d(v)
         n = getattr(self, 'norm', default_norm)
-        a = operands[0]
-        return 0 if v < 0 else n.or_(a.t(v), a.t(-v))
+        r = n.or_(operand.t(v), operand.t(-v))
+        less_that_zero = np.where(v < 0)
+        r[less_that_zero] = 0
+        return r if a else r[0]
 
 
 # BinaryOperator:---  logic: imp, con, nimp, ncon, nand, nor, xor, iff; math: mul, div
@@ -556,8 +556,8 @@ class BinaryOperator(Operator, ABC):
 
     def __init__(self, a: Operand, b: Operand, **kwargs):
         """It just gets its rare attributes set and prepares its operand."""
-        a = super()._prepare_operand(a)
-        b = super()._prepare_operand(b)
+        super()._prepare_operand(a, **kwargs)
+        super()._prepare_operand(b, **kwargs)
         super().__init__(a, b, **kwargs)
 
     def __str__(self):
@@ -579,9 +579,14 @@ class BinaryOperator(Operator, ABC):
         This works for the 8 binary logic ops, so I'll put it here.  The 2 binary math ops are different."""
         return a.union(b)
 
-    def t(self, v: float) -> float:
+    def t(self, v: Union[np.ndarray, float]) -> Union[np.ndarray, float]:
         """This should do it for all binary functions"""
-        return self.l_op("e", 0, self.operands[0].t(v), self.operands[1].t(v))
+        if isinstance(self, LogicOperator):
+            n = getattr(self, 'norm', default_norm)
+            return self._op(n, self.operands[0].t(v), self.operands[1].t(v))
+        if isinstance(self, MathOperator):
+            n = getattr(self, 'norm', default_norm)
+            return self._op(n, self.operands[0].t(v), self.operands[1].t(v))  # TODO Something like this? combine?
 
     def _operate(self, precision: int, allowed_domain: Domain = None) -> _Numerical:
         """Use the operator's d_op and l_op or m_op on the three parts of the operand's numerical form."""
@@ -593,7 +598,7 @@ class BinaryOperator(Operator, ABC):
         if isinstance(self, LogicOperator):
             return self._binary_logic_op(n, sampling, interp, a, b)  # does the partitioning and sampling behavior
         else:  # It's a MathOperator.
-            return self._binary_math_op(n, sampling, interp, a, b)  # defined by its line functions
+            return self._binary_math_op(n, sampling, interp, a, b)  # TODO  defined by its line functions
 
 
 class Imp(LogicOperator, BinaryOperator):
@@ -652,135 +657,88 @@ class Ncon(LogicOperator, BinaryOperator):
         return Truth.ncon(a, b, n)
 
 
-class BinaryOperator(Operator, ABC):
-    """A base class: An :class:`.Operator` has one :class:`.TruthOperand` operand."""
-
-    def __init__(self, a: Operand, b: Operand, **kwargs):
-        """It just gets its rare attributes set and prepares its operand."""
-        a = super()._prepare_operand(a, **kwargs)
-        b = super()._prepare_operand(b, **kwargs)
-        super().__init__(a, b, **kwargs)
-
-    def _get_domain(self) -> Union[Domain, None]:
-        """What the domain of the result will be: the domain of the operand, transformed."""
-        a_d = self.operands[0]._get_domain()
-        b_d = self.operands[1]._get_domain()
-        d = self.d_op(False, a_d, b_d)
-        return d
-
-    def d_op(self, inv: bool, a: Domain, b: Domain) -> Domain:  # noqa
-        """It only works on one domain, but Pycharm complains if I leave off the star.
-        Pycharm doesn't complain when l_op or m_op do the same thing.
-
-        This works for the 8 binary logic ops, so I'll put it here.  The 2 binary math ops are different."""
-        return a.union(b)
-
-    def t(self, v: float) -> float:
-        """This should do it for all binary functions"""
-        return self.l_op("e", 0, self.operands[0].t(v), self.operands[1].t(v))
-
-    def _operate(self, precision: int, allowed_domain: Domain = None) -> _Numerical:
-        """Use the operator's d_op and l_op or m_op on the three parts of the operand's numerical form."""
-        na = operands[0]._get_numerical(precision, allowed_domain)  # a Numerical version of the a operand
-        nb = operands[1]._get_numerical(precision, allowed_domain)  # a Numerical version of the b operand
-        e = self.l_op("e", precision, na.e, nb.e)
-        # on [0,1] if l_op is defined (logic op); -1 otherwise (math op).
-        ax, ac, = na.xv is not None, na.cv is not None  # What ``a`` and ``b`` have (c?, x?)
-        bx, bc, = nb.xv is not None, nb.cv is not None
-        logic = e >= 0  # A logic or math op?
-        cd, cn, xv, xt, cv, ct = None, 0, None, None, None, None
-        if (ax or bx) and logic:
-            xv, xt = self.l_op("x", precision, na.xv, na.xt, nb.xv, nb.xt)
-        if (ax or bx) and not logic:
-            xv, xt = self.m_op("x", precision, na.xv, na.xt, nb.xv, nb.xt)
-        if (ac or bc) and logic:
-            cd = self.d_op(False, na.cd, nb.cd)  # What the domain of the result will be.
-            cv, ct = self.l_op("c", precision, na.cv, na.ct, nb.cv, nb.ct)
-        if (ac or bc) and not logic:
-            cd = self.d_op(False, na.cd, nb.cd)  # What the domain of the result will be.
-            cv, ct = self.m_op("c", precision, na.cv, na.ct, nb.cv, nb.ct)
-        if not logic:
-            e = self.m_op("e", precision, na.e, nb.e)
-        return _Numerical(cd, precision, cv, ct, xv, xt, e)
-
-
 class AssociativeOperator(Operator, ABC):
     """A base class: An :class:`.Operator` has one :class:`.TruthOperand` operand."""
 
-    def __init__(self, *operands: TruthOperand, **kwargs):
+    def __init__(self, *operands: Operand, **kwargs):
         """It just gets its rare attributes set and prepares its operand."""
-        super().__init__(**kwargs)  # bogus because Logic/MathOperator will call it.
-        operands = list(operands)
-        for i in range(0, len(operands)):
-            operands[i] = super()._prepare_operand(operands[i], **kwargs)
-        self.a = operands
+        for a in operands:
+            super()._prepare_operand(a, **kwargs)
+        super().__init__(*operands, **kwargs)
 
     def __str__(self):
-        out = str(f"( ({self.a[0].__str__()})")
-        for i in range(1, len(self.a)):
-            out = out + str(f"\n {self.name} \n ") + str(f"({self.a[i].__str__()})")
-        return out + str(" )")
+        a = self.operands[0].__str__()
+        b = self.operands[1].__str__()
+        top = str(f"\n {self.name} together the following: [\n")
+        for i, a in enumerate(self.operands):
+            top = top + str(f"{i}:  ") + a.__str__() + str(f"\n")
+        top = top + str(f"]\n")
+        return top
 
     def _get_domain(self) -> Union[Domain, None]:
         """What the domain of the result will be: the domain of the operand, transformed."""
-        d = None
-        for a in self.a:
-            a_d = a._get_domain()
-            d = self.d_op(False, a_d, d)
+        d, i, n = None, 0, len(self.operands)
+        for i in range(0, n):  # Find the first operand that has a domain.
+            d = self.operands[0]._get_domain()
+            if d is not None:
+                break
+        if d is None:
+            return None  # If none do, return None.
+        for j in range(i + 1, n):
+            a = self.operands[j]._get_domain()
+            d = self.d_op(False, d, a)
         return d
 
-    def d_op(self, inv: bool, a: Domain, b: Domain) -> Domain:  # noqa
-        """It only works on one domain, but Pycharm complains if I leave off the star.
-        Pycharm doesn't complain when l_op or m_op do the same thing.
-
-        This works for the 8 binary logic ops, so I'll put it here.  The 2 binary math ops are different."""
-        return a.union(b)
+    def d_op(self, inv: bool, *a: Domain) -> Domain:
+        """This works for the 2 associative logic ops, so I'll put it here.
+        The 2 associative math ops are different, and must override this."""
+        return a[0].union(a[1])
 
     def t(self, v: float) -> float:
-        """This should do it for all binary functions"""
-        # for a in self.a:
-        t = np.empty(0)
-        for a in self.a:
-            t = np.append(t, a.t(v))
-        return self.l_op("e", 0, t)
+        """This should do it for all associative functions"""
+        if isinstance(self, LogicOperator):
+            n = getattr(self, 'norm', default_norm)
+            t = []
+            for a in self.operands:
+                t.append(a.t(v))
+            t = np.array(t)
+            return self._op(n, t)
+        if isinstance(self, MathOperator):  # TODO
+            n = getattr(self, 'norm', default_norm)
+            s, n = self.operands[0], len(operands)
+            for i in range(1, n):
+                a = self.operands[i]
+                s = self._op(n, s, a)
+            return s
 
     def _operate(self, precision: int, allowed_domain: Domain = None) -> _Numerical:
-        """Use the operator's d_op and l_op or m_op on the three parts of the operand's numerical form."""
-        na = self.a._get_numerical(precision, allowed_domain)  # a Numerical version of the a operand
-        nb = self.b._get_numerical(precision, allowed_domain)  # a Numerical version of the b operand
-        e = self.l_op("e", precision, na.e, nb.e)
-        # on [0,1] if l_op is defined (logic op); -1 otherwise (math op).
-        ax, ac, = na.xv is not None, na.cv is not None  # What ``a`` and ``b`` have (c?, x?)
-        bx, bc, = nb.xv is not None, nb.cv is not None
-        logic = e >= 0  # A logic or math op?
-        cd, cn, xv, xt, cv, ct = None, 0, None, None, None, None
-        if (ax or bx) and logic:
-            xv, xt = self.l_op("x", precision, na.xv, na.xt, nb.xv, nb.xt)
-        if (ax or bx) and not logic:
-            xv, xt = self.m_op("x", precision, na.xv, na.xt, nb.xv, nb.xt)
-        if (ac or bc) and logic:
-            cd = self.d_op(False, na.cd, nb.cd)  # What the domain of the result will be.
-            cv, ct = self.l_op("c", precision, na.cv, na.ct, nb.cv, nb.ct)
-        if (ac or bc) and not logic:
-            cd = self.d_op(False, na.cd, nb.cd)  # What the domain of the result will be.
-            cv, ct = self.m_op("c", precision, na.cv, na.ct, nb.cv, nb.ct)
-        if not logic:
-            e = self.m_op("e", precision, na.e, nb.e)
-        return _Numerical(cd, precision, cv, ct, xv, xt, e)
+        n = getattr(self, 'norm', default_norm)
+        sampling = getattr(self, 'sampling', default_sampling_method)
+        interp = getattr(self, 'interpolator', default_interpolator)
+        if isinstance(self, LogicOperator):
+            return self._associative_logic_op(precision, allowed_domain, n, sampling, interp)
+            # does the partitioning and sampling behavior
+        else:  # It's a MathOperator---but this simple routine would work for logical associatives too:
+            number = len(self.operands)
+            s = self.operands[0]._get_numerical(precision, allowed_domain)
+            for i in range(1, number):
+                a = self.operands[i]._get_numerical(precision, allowed_domain)
+                s = self._op(n, s, a)  # sampling, interp,
+            return s
 
 
 class And(LogicOperator, AssociativeOperator):
     name = str("∧ AND ∧")
 
-    def _op(self, n: Norm, a: TruthOperand, b: TruthOperand) -> TruthOperand:
-        return n.and_(a, b)
+    def _op(self, n: Norm, *operands: TruthOperand) -> TruthOperand:
+        return n.and_(*operands)
 
 
 class Or(LogicOperator, AssociativeOperator):
     name = str("∨ OR ∨")
 
-    def _op(self, n: Norm, a: TruthOperand, b: TruthOperand) -> TruthOperand:
-        return n.or_(a, b)
+    def _op(self, n: Norm, *operands: TruthOperand) -> TruthOperand:
+        return n.or_(*operands)
 
 # AssociativeOperator:---  logic: and, or;  math:  add, mul
 # Qualifiers:  normalize, weight, focus
