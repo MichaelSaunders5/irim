@@ -55,6 +55,7 @@ objects with some added functionality.
 
 from __future__ import annotations
 
+from collections import Iterable
 from abc import ABC, abstractmethod
 from math import exp, floor, ceil
 from typing import Union, Callable
@@ -213,6 +214,8 @@ class Norm(ABC):
             * In the second case: a single fit---the result of all the array's elements operated together."""
         if isinstance(operands[0], np.ndarray) and len(operands) == 1:
             item = operands[0]
+        if isinstance(operands[0], Iterable) and len(operands) == 1:
+            item = operands[0]
         else:
             item = list(operands)
         for i in range(1, len(item)):
@@ -315,8 +318,8 @@ class Lax(Norm):
 
     def _or(self, a: Operand, b: Operand) -> np.ndarray:
         # equivalent:  if a == 1: r = b;  elif b == 1: r = a;  else: r = 0
-        c = b * numpy.equal(a, 1)
-        d = a * numpy.equal(b, 1)
+        c = b * np.equal(a, 1)
+        d = a * np.equal(b, 1)
         return np.clip(c + d, 0, 1)
 
     def _and_integral(self, z: np.ndarray, line_length: float) -> float:
@@ -353,12 +356,14 @@ class Hamacher(Norm):
 
     def _and(self, a: Operand, b: Operand) -> np.ndarray:
         # equivalent:  return 0 if a == b == 0 else a * b / (a + b - a * b)  # Could get +inf near a==b==0?
-        c = a * b / (a + b - a * b)
+        with np.errstate(divide='ignore', invalid='ignore'):
+            c = a * b / (a + b - a * b)
         return np.nan_to_num(c, nan=0.0, posinf=1.0, neginf=0.0)
 
     def _or(self, a: Operand, b: Operand) -> np.ndarray:
         # equivalent:  return 1 if a == b == 1 else (a + b - 2 * a * b) / (1 - a * b)
-        c = (a + b - 2 * a * b) / (1 - a * b)
+        with np.errstate(divide='ignore', invalid='ignore'):
+            c = (a + b - 2 * a * b) / (1 - a * b)
         return np.nan_to_num(c, nan=1.0, posinf=1.0, neginf=0.0)
 
     def _and_integral(self, z: np.ndarray, line_length: float) -> float:
@@ -448,7 +453,7 @@ class Lukasiewicz(Norm):
         return str(f"The Łukasiewicz / bounded sum norm (strictness = {self.strictness}).")
 
     def _and(self, a: Operand, b: Operand) -> np.ndarray:
-        # equivalent:  max(0.0, a + b - 1)
+        # equivalent:  max(0, a + b - 1)
         c = a + b - 1
         return np.clip(c, 0, 1)
 
@@ -474,8 +479,8 @@ class Drastic(Norm):
 
     def _and(self, a: Operand, b: Operand) -> np.ndarray:
         # equivalent:  if a == 1: r = b;  elif b == 1: r = a;  else: r = 0
-        c = b * numpy.equal(a, 1)
-        d = a * numpy.equal(b, 1)
+        c = b * np.equal(a, 1)
+        d = a * np.equal(b, 1)
         return np.clip(c + d, 0, 1)
 
     def _or(self, a: Operand, b: Operand) -> np.ndarray:

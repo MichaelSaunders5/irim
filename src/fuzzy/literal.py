@@ -2,16 +2,17 @@
 
 from __future__ import annotations
 
-from math import log, exp, sqrt
+from math import log, exp, sqrt, pi, isfinite
 from typing import Union, Tuple
+from abc import abstractmethod
 
 import numpy as np
 from scipy.stats import norm as gauss
 
 from fuzzy.crisp import Interpolator
-from fuzzy.number import Domain, Literal, _Numerical, default_interpolator
+from fuzzy.number import Domain, _Numerical, default_interpolator, default_sampling_method, _guard
 from fuzzy.truth import Truth, default_threshold
-
+from fuzzy.operator import Operator
 
 def _scale(data: Union[np.ndarray, Iterable[float], float],
            expected_range: Tuple[float, float] = (0, 1), intended_range: Tuple[float, float] = (0, 1),
@@ -50,6 +51,242 @@ def _scale(data: Union[np.ndarray, Iterable[float], float],
     t = Truth.scale(t, "in", expected_range, map, False)
     t = Truth.scale(t, "out", intended_range, "lin", True)
     return t
+
+
+def _check_points(points: np.ndarray) -> (np.ndarray, np.ndarray):
+    """Checks a set of (v,t) points for validity and returns them as separate v,t arrays."""
+    xv = np.atleast_2d(points)[:, 0]
+    xt = np.atleast_2d(points)[:, 1]
+    if (np.max(xt) > 1) or (np.min(xt) < 0):
+        too_high = xv[np.where(xt > 1)]
+        too_low = xv[np.where(xt < 0)]
+        raise ValueError(f"Truths must be on [0,1].  "
+                         f"Yours are too high at v=={too_high}; and too low at v=={too_low}.")
+    all_values, counts = np.unique(xv, return_counts=True)
+    dup_values = all_values[np.where(counts > 1)]
+    if len(dup_values) > 0:
+        raise ValueError(f"You cannot define two truths for the same value.  "
+                         f"You have more than one truth at v={dup_values}.")
+    return xv, xt
+
+
+
+class Literal(Operator):  # user only implements _sample
+    """An abstract base for fuzzy numbers defined by a mathematical function given as a Python method.
+
+    The fuzzy number may be continuous (the default) or discretized.  This is useful if the truth may be
+    easily defined by a mathematical function, but only valid for discrete values.
+    There are three ways of doing this:
+
+        * For an arbitrary collection of values, given by ``discrete=``.
+        * For a set of uniformly-spaced values, by setting ``uniform=True`` and,
+          optionally, ``step=`` and ``origin=``.
+        * Both of the above together.
+
+    Subclasses must implement :meth:`.Literal._sample` to be the t(v) function that defines the fuzzy number.
+    Its input and output are :class:`numpy.ndarray`\\ s, so it should be done using vectorized Numpy mathematics
+    (i.e., with `*ufunc*\\ s <https://numpy.org/doc/stable/reference/ufuncs.html#available-ufuncs>`_).
+
+    Subclasses may set their ``self.origin`` to a default, if it is ``None`` (not given on initialization).
+    This should probably be the value where the function reaches its "peak" (``range[1]``), or some other
+    critical point.
+
+    Note:
+        A Literal (or _Numerical) that represents a continuous function, can have exceptional points added by
+        simple assignment, e.g.:
+
+            | ``a_function = Triangle(1, 2, 3)``
+            | ``a_point = Exactly(8)``
+            | ``a_function.xv, a_function.xt = a_point.xv, a_point.xt``
+            | ``print(a_function.t(7))``
+            | ``print(a_function.t(8))``
+
+        prints 0 then 1.  Note that the exceptional point needn't be in the domain of the continuous part.
+    """
+
+    # domain: Domain, range: Tuple[float, float] = (0, 1), elsewhere: float = 0
+    # expected_range: Tuple[float, float] = (0, 1), intended_range: Tuple[float, float] = (0, 1),
+    #                  map: str = "lin", clip: bool = False,
+    #                  elsewhere: float = 0
+    def __init__(self, **kwargs):
+        """
+        Caution:
+            Authors of subclasses, take note.
+            Two of the keyword arguments, ``domain`` and ``origin`` are set to ``None`` by default.  This will cause
+            errors unless the subclass replaces them with a default.  The superclass (here) can't
+            because it doesn't know the intentions of the subclass.  The best practices are as follows:
+
+                * If ``domain == None``:  set it to the domain where the function varies interestingly,
+                  e.g., over [.001, .999].
+                * If ``origin == None``:  set it to the value where the function peaks, inflects, or has some other
+                  critical feature.
+
+        Keyword Arguments:
+
+            domain= (Tuple[float, float]):
+                The domain of values over which _sample defines a continuous function
+                (i.e., not including any exceptional points). The full, continuous domain will be
+                used, unless it is discretized by defining ``discrete`` or by setting ``uniform=True``.
+                Values not on ``domain`` or defined as exceptional points have a truth of ``elsewhere``.
+                N.B.: if a continuous function is intended and users do not set the domain, subclasses should
+                choose a default---probably the domain where the truth has most of its variation (say, 99.9%).
+            range= (Tuple[float, float]):
+                The extremes of truth that will be reached, scaled from ``expected_range``.  Default: [0,1].
+                If only exceptional points are intended, ``domain`` *should be* ``None``.  Default: ``None``.
+            elsewhere= (float):
+                Returned for values that are otherwise undefined.  Default: 0.
+
+            discrete= (Iterable[float]):
+                If defined, the domain is restricted to these values, given explicitly
+                (and to any defined by ``uniform``).
+            uniform= (bool):
+                If ``True``, the domain is restricted to a set of uniformly-spaced values, according
+                to ``step`` and ``origin`` (and to any defined by ``discrete``).
+            step= (float):
+                Uniform points are spaced at these intervals over ``domain``.  Default: 1.
+            origin= (float):
+                Uniform points will be measured from ``origin``.  It needn't be in the domain.
+                Default:  ``None``---the subclass must choose a default,
+                and would do well to use the value where the
+                function "peaks" (i.e., reaches ``range[1]``).
+
+            points= (Iterable[Tuple[float, float]]):
+                  A container of (v, t) pairs to be added to the continuous definition.  Default: ``None``.
+
+                """
+        # domain-related:
+        super().__init__(kwargs.get('elsewhere', 0))
+        domain = kwargs.get('domain', None)  # Where _sample is defined, even if cd will be None due to discretization
+        self.d = None if domain is None else Domain(domain) if isinstance(domain, tuple) else domain
+        # If None, subclasses must supply a default
+        self.range = kwargs.get('range', (0, 1))
+        if not (Truth.is_valid(self.range[0]) and Truth.is_valid(self.range[1])):
+            raise ValueError("Truths like those in ``range`` must be on [0,1].")
+        # discretization-related:
+        self.discrete = kwargs.get('discrete', None)
+        self.uniform = kwargs.get('uniform', False)
+        self.step = kwargs.get('step', 1)
+        self.origin = kwargs.get('origin', None)
+        if self.discrete is not None:
+            self.discrete = np.array(self.discrete)
+        if self.uniform:
+            if self.step <= 0:
+                raise ValueError("Step must be > 0.")
+        # exceptional points
+        points = kwargs.get('points', None)  # TODO: Am I going to make this keyword-settable???
+        if (points is not None) and (len(points) != 0):
+            xv, xt = _check_points(points)
+            self.xv, self.xt = xv, xt
+        else:
+            self.xv, self.xt = None, None  # They can hold exceptional points if they are assigned.
+
+    def __str__(self):
+        s = str(f"domain: {self.d}, range: ({self.range[0]:.3g}, {self.range[1]:.3g}), "
+                f"elsewhere: {self.e:.4g}")
+        if self.uniform or self.discrete is not None:
+            i = str(f"\n discretization: ")
+        else:
+            i = str(f"no discretization. ")
+        u, d, c = "", "", ""
+        if self.discrete is not None:
+            d = str(f"at values: {self.discrete}")
+        if self.uniform and self.discrete is not None:
+            c = str(f" and at ")
+        if self.uniform:
+            u = str(f"uniform {self.step:g} steps from {self.origin:g}")
+        if self.xv is None:
+            x = str(f"no exceptional points.")
+        else:
+            x = str(f"exceptional points: \n {np.dstack((self.xv, self.xt))[0]}")
+        return str(f"{s}; {i}{d}{c}{u}; {x}")
+
+    @abstractmethod
+    def _sample(self, v: np.ndarray) -> np.ndarray:
+        """This is where you implement the t(v) function that defines your fuzzy number.
+        It should return a truth on [0,1] for any real number in the domain, ``self.d``,
+        using vectorized Numpy functions.
+
+        You can call ``super()._sample(v) for values outside ``self.d``---or simply return ``self.e`` for them."""
+
+    def _get_domain(self, extreme_domain: Domain = None) -> Domain:
+        if extreme_domain is None:
+            return self.d
+        else:
+            return self.d.intersection(extreme_domain)
+
+    def _get_numerical(self, precision: int, allowed_domain: Domain = None) -> _Numerical:
+        """"""
+        domain = self.d  # The domain on which _sample() is defined (and a bit beyond, we can hope).
+        if allowed_domain is not None:
+            domain = domain.intersection(allowed_domain)
+        if (domain is None) or (precision <= 0):
+            num = _Numerical(None, 0, None, None, self.xv, self.xt, self.e)
+            if allowed_domain is not None:
+                num = _Numerical._impose_domain(num, allowed_domain)  # noqa
+            return num
+        xv, xt = self.xv, self.xt
+        discrete = (self.discrete is not None) and (len(self.discrete) > 0)
+        if discrete or self.uniform:  # Discretization has been called for.
+            cd, cn, cv, ct = None, 0, None, None
+            xv = np.empty(0)
+            if self.uniform:  # Find the uniformly-spaced sample points inside domain.
+                n0 = ceil((domain[0] - self.origin) / self.step)  # Extreme sample numbers relative to origin.
+                n1 = floor((domain[1] - self.origin) / self.step)
+                v0 = self.origin + n0 * self.step  # extreme values
+                v1 = self.origin + n1 * self.step
+                xv = np.linspace(v0, v1, n1 - n0 + 1)  # Calculate the values of the points.
+            if discrete:
+                xv = np.unique(np.concatenate((xv, self.discrete)))
+            xv = np.setdiff1d(xv, self.xv, assume_unique=True)  # Remove from xv any elements that are in self.xv
+            xt = self._sample(xv)  # Sample the Literal at the exceptional points.
+            xt = _guard(xt)
+            if self.xv is not None:
+                xv = np.concatenate((xv, self.xv), axis=None)
+                xt = np.concatenate((xt, self.xt), axis=None)
+        else:  # A continuous function has been called for. Find cv cleverly.
+            cd = domain
+            cn = 3 if (precision < 3) else precision  # I.e., if it's 1 or 2, make it 3.
+            # below: 2 to guard the secant & interval from exploding; 3 allows possible linear extrapolation.
+            if default_sampling_method == "Chebyshev":  # Find the values to sample at, Chebyshev or uniform.
+                m = cn + 2
+                cv = np.arange(1, m + 1, 1)
+                cv = .5 * cd.span() * (-np.cos((cv - .5) * pi / m)) / np.cos(1.5 * pi / m) + cd.center()
+            else:
+                interval = cd.span() / (cn - 1)
+                cv = np.linspace(cd[0] - interval, cd[1] + interval, num=(cn + 2))
+            ct = self._sample(cv)  # Sample the Literal on the continuous domain.
+            if (len(ct) >= 4) and (not isfinite(ct[-2])):  # because Akima interp. produces two NaNs at the end.
+                ct[-2] = 2 * ct[-3] - ct[-4]
+            ct = np.concatenate((ct[0:1], _guard(ct[1:-1]), [ct[-1]]))  # Make the pts. on domain safe.
+            # Literals aren't guaranteed at their guard points (beyond self.d).  So, if they're funny...
+            # linear extrapolate to them---excursions beyond [0,1] allowed here---to preserve the *shape* on domain:
+            if not isfinite(ct[0]):
+                ct[0] = 2 * ct[1] - ct[2]
+            if not isfinite(ct[-1]):
+                ct[-1] = 2 * ct[-2] - ct[-3]
+        return _Numerical(cd, cn, cv, ct, xv, xt, self.e)
+
+    def t(self, v: Union[np.ndarray, float]) -> Union[np.ndarray, float]:
+        """Returns the truth of given values."""
+        a = isinstance(v, np.ndarray)
+        v = np.atleast_1d(v)
+        e = np.full_like(v, self.e)
+        c = self._sample(v)
+        c_e = np.where((v < self.d[0]) | (v > self.d[1]), e, c)
+        for i, value in enumerate(v):
+            j = np.where(value == self.xv)[0]
+            if j is None or len(j) == 0:
+                continue
+            c_e[i] = self.xt[j]
+            c_e = _guard(c_e)
+        return c_e if a else c_e[0]
+
+
+    def _operate(self, precision: int, allowed_domain: Domain = None):
+        pass
+    def _op(self, *args) -> Union[np.ndarray, float]:
+        pass
+
 
 
 class Triangle(Literal):
@@ -111,6 +348,7 @@ class Trapezoid(Literal):
 
     def __init__(self, a: float, b: float, c: float, d: float, **kwargs):
         """Args:
+
             a, b, c, d:  The extreme domain, [a,d], and, within it, the preferred domain [b,c].
                 The function is piecewise linear between
                 these points.  The condition :math:`a \\le b \\le c \\le d` must hold.
@@ -124,6 +362,7 @@ class Trapezoid(Literal):
             kwargs: Keyword arguments relating to domain, range, discretization, and exceptional points:
                 See :class:`.Literal`.
             origin:  Default: the center of the preferred region.
+
             """
         super().__init__(**kwargs)
         if not (a <= b <= c <= d):
@@ -259,6 +498,7 @@ class Bell(Literal):
             shape: A parameter affecting the shape of the sides.  Its significance depends on ``unit`` below.
                 Default: 1, unit="p"---a plateau half the width.
             unit: The meaning of ``shape``.  It can have three values: {``s``, ``t``, ``p``}:
+
                 * ``s``: **slope**---the steepness of the sides, the absolute slope at half maximum.
                 * ``t``: **transition width**---the width, given in multiples of ``hwhm``, of the region
                   on either side of the bell where the truth varies on [.1, .9].

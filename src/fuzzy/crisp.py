@@ -113,6 +113,10 @@ class Interpolator:
 class Map:
     """A callable object: a function mapping a fuzzy number's suitability onto real numbers.
 
+    # TODO: re-write this to hold an expression as a FuzzyNumber instead of a _Numerical and to take arrays
+    # Well, a raw expression is more accurate, but is it more efficient than a numerical?  It depends, but I
+    # think it usually is.  Maybe it can be an option of .map.
+
     The most familiar way of using a fuzzy number is to "defuzzify" it to obtain a single, definite, crisp number.
     That is accomplished by the :meth:`.Value.crisp` method.  Another way is to use a function to map its
     suitability onto the crisp numbers.  I.e., a fuzzy number (a :class:`Value` object) is :math:`s(v)`,

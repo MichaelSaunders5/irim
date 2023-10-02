@@ -97,12 +97,13 @@ Caution:
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from collections import Iterable
 from math import log
 from typing import Union, Tuple
 
 import numpy as np
-
-from fuzzy.norm import Norm, default_norm
+import fuzzy.norm
+# from fuzzy.norm import Norm, default_norm
 
 TruthOperand = Union[float, np.ndarray, int, bool, 'Truth']
 """A type indicating {:class:`Truth` | ``float`` | ``int`` | ``bool`` | :class:`numpy.ndarray`}.  
@@ -114,6 +115,15 @@ the point of inflection for the :meth:`weight` method, and the default value for
 It should be what you consider as exactly "maybe".  It may be set directly.  
 I like the intuitive default of .5 because it gives equal scope and resolution to either side of "maybe"."""
 
+
+def _prepare_norm(**kwargs) -> Norm:
+    """Use if available, in order of preference, keyword parameters, a given norm, or the default norm.
+    """
+    kw = kwargs.get('norm', getattr(fuzzy.norm, 'default_norm'))
+    if isinstance(kw, fuzzy.norm.Norm):
+        return kw
+    else:
+        return fuzzy.norm.Norm.define(**kw)
 
 @dataclass
 class Truth(float):
@@ -311,7 +321,7 @@ class Truth(float):
     # One unary operator (ignoring insistence (11), denial (00), and proposition (01))
     # ---we only need "¬", negation (10), accessed via: "s.not_()" or "~s".
 
-    def not_(self, norm: Norm = None) -> Truth:
+    def not_(self, **kwargs) -> Truth:
         """The negation ("not", ¬) unary operator [10].
 
         The truth of such expressions as, "``self`` is not so".
@@ -324,9 +334,8 @@ class Truth(float):
             The opposite of ``self``, the extent to which ``self`` is false."""
         # This will probably always be the standard fuzzy negation: 1 - self.s, but I refer to the norm
         # for consistency, and in case one chooses to implement non-standard negations.
-        if norm is None:
-            norm = default_norm
-        return norm.not_(self.s)
+        norm = _prepare_norm(**kwargs)
+        return norm.not_(self)
 
     # Ten binary operators:---
     # ignoring:  tautology (1111), contradiction (0000);
@@ -353,7 +362,7 @@ class Truth(float):
     # First, the basic functions that provide the calculation via the `default_norm`:
     # and_, or_, imp_, con_, iff_, xor_;  nand_, nor_, nimp_, ncon_:
 
-    def and_(self, *other: TruthOperand, norm: Norm = None) -> Truth:
+    def and_(self, *other: TruthOperand, **kwargs) -> Truth:
         """The conjunction ("and", ∧) binary operator [0001].
 
         The truth of such expressions as, "both ``self`` and ``other``".  
@@ -366,14 +375,10 @@ class Truth(float):
         Returns:
             The conjunction of ``self`` and ``other``, the extent to which they are both true
             (to which all are simultaneously true)."""
-        if isinstance(other[-1], Norm):
-            norm = other[-1]
-            other = other[0:-1]
-        if norm is None:
-            norm = default_norm
+        norm = _prepare_norm(**kwargs)
         return norm.and_(self, *other)
 
-    def or_(self, *other: TruthOperand, norm: Norm = None) -> Truth:
+    def or_(self, *other: TruthOperand, **kwargs) -> Truth:
         """The disjunction ("inclusive or", ∨)
         binary operator [0111].
 
@@ -387,15 +392,12 @@ class Truth(float):
         Returns:
             The disjunction of ``self`` and ``other``, the extent to which either or both is true
             (to which any number are true)."""
-        if isinstance(other[-1], Norm):
-            norm = other[-1]
-            other = other[0:-1]
-        if norm is None:
-            norm = default_norm
+        norm = _prepare_norm(**kwargs)
         return norm.or_(self, *other)
 
 
-    def imp(self, other: TruthOperand, norm: Norm = None) -> Truth:
+
+    def imp(self, other: TruthOperand, **kwargs) -> Truth:
         """The material implication ("imply", →) binary operator [1101], the converse of :meth:`con`.
 
         The truth of such expressions as, "``self`` implies ``other``", or "if ``self`` then ``other``".  
@@ -407,11 +409,10 @@ class Truth(float):
 
         Returns:
             The implication of ``self`` to ``other``, the extent to which ``self`` must result in ``other``."""
-        if norm is None:
-            norm = default_norm
+        norm = _prepare_norm(**kwargs)
         return norm.or_(norm.not_(self), other)
 
-    def con(self, other: TruthOperand, norm: Norm = None) -> Truth:
+    def con(self, other: TruthOperand, **kwargs) -> Truth:
         """The converse implication ("con", ←) binary operator [1011], the converse of :meth:`imp`.
 
         The truth of such expressions as, "``other`` implies ``self``", or "if ``other`` then ``self``".  
@@ -424,11 +425,10 @@ class Truth(float):
         Returns:
             The implication of ``other`` to ``self``,
             the extent to which ``other`` must indicate that ``self`` was true."""
-        if norm is None:
-            norm = default_norm
+        norm = _prepare_norm(**kwargs)
         return norm.or_(self, norm.not_(other))
 
-    def iff(self, other: TruthOperand, norm: Norm = None) -> Truth:
+    def iff(self, other: TruthOperand, **kwargs) -> Truth:
         """The equivalence or "biconditional" ("iff", ↔) binary operator [1001], the inverse of :meth:`xor`.
 
         It is familiar in Mathematics as "if and only if" and in Electronics as "xnor"
@@ -444,11 +444,10 @@ class Truth(float):
         Returns:
             The equivalence of ``self`` and ``other``, the extent to which they have the same degree of truth,
             the extent to which they occur together but not apart."""
-        if norm is None:
-            norm = default_norm
+        norm = _prepare_norm(**kwargs)
         return norm.or_(norm.and_(self, other), norm.and_(norm.not_(self), norm.not_(other)))
 
-    def xor(self, other: TruthOperand, norm: Norm = None) -> Truth:
+    def xor(self, other: TruthOperand, **kwargs) -> Truth:
         """The non-equivalence or "exclusive disjunction" ("exclusive or", ⨁) binary operator [0110],
         the inverse of :meth:`iff`.
 
@@ -464,11 +463,10 @@ class Truth(float):
         Returns:
             The non-equivalence of ``self`` and ``other``, the extent to which their degrees of truth differ,
             the extent to which they occur apart but not together."""
-        if norm is None:
-            norm = default_norm
+        norm = _prepare_norm(**kwargs)
         return norm.and_(norm.or_(self, other), norm.not_(norm.and_(self, other)))
 
-    def nand(self, other: TruthOperand, norm: Norm = None) -> Truth:
+    def nand(self, other: TruthOperand, **kwargs) -> Truth:
         """The alternative denial ("nand", ↑) binary operator [1110], the inverse of :meth:`and_`.
 
         The truth of such expressions as, "``self`` and ``other`` cannot occur together".
@@ -480,11 +478,10 @@ class Truth(float):
 
         Returns:
             The inverse conjunction of `self` and ``other``, the extent to which they are not both true."""
-        if norm is None:
-            norm = default_norm
+        norm = _prepare_norm(**kwargs)
         return norm.not_(norm.and_(self, other))
 
-    def nor(self, other: TruthOperand, norm: Norm = None) -> Truth:
+    def nor(self, other: TruthOperand, **kwargs) -> Truth:
         """The joint denial ("nor", ↓) binary operator [1000], the inverse of :meth:`or_`.
 
         The truth of such expressions as, "neither ``self`` nor ``other``".
@@ -496,11 +493,10 @@ class Truth(float):
 
         Returns:
             The inverse disjunction of ``self`` and ``other``, the extent to which both are false."""
-        if norm is None:
-            norm = default_norm
+        norm = _prepare_norm(**kwargs)
         return norm.not_(norm.or_(self, other))
 
-    def nimp(self, other: TruthOperand, norm: Norm = None) -> Truth:
+    def nimp(self, other: TruthOperand, **kwargs) -> Truth:
         """The material nonimplication ("nimply", :math:`\\nrightarrow`) binary operator [0010],
         the inverse of :meth:`imp`.
 
@@ -515,11 +511,10 @@ class Truth(float):
         Returns:
             The nonimplication of ``self`` to ``other``; the extent to which ``self`` suppresses or inhibits ``other``;
             the extent to which the presence of ``self`` indicates that ``other`` will not occur."""
-        if norm is None:
-            norm = default_norm
+        norm = _prepare_norm(**kwargs)
         return norm.and_(self, norm.not_(other))
 
-    def ncon(self, other: TruthOperand, norm: Norm = None) -> Truth:
+    def ncon(self, other: TruthOperand, **kwargs) -> Truth:
         """The converse non-implication ("ncon", :math:`\\nleftarrow`) binary operator [0100],
         the inverse of :meth:`con`.
 
@@ -533,8 +528,7 @@ class Truth(float):
         Returns:
             The non-implication of ``other`` to ``self``,
             the extent to which ``other`` indicates that ``self`` was false."""
-        if norm is None:
-            norm = default_norm
+        norm = _prepare_norm(**kwargs)
         return norm.and_(norm.not_(self), other)
 
     # One more binary operator peculiar to fuzzy technique:  weight:
@@ -700,4 +694,4 @@ class Truth(float):
 
     def __str__(self):
         """Returns just the truth value."""
-        return str(self.s)
+        return str(f"truth: {self.s}")

@@ -1,3 +1,5 @@
+"""Come on, let's *do* somthin'."""
+
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
@@ -28,6 +30,8 @@ def _handle_defaults(**kwargs) -> Tuple:
     norm_args = kwargs.get('norm', None)
     if norm_args is not None:
         norm = Norm.define(**norm_args)
+    else:
+        norm = getattr(fuzzy.norm, 'default_norm')
     threshold = kwargs.get('threshold', None)  # float on [0,1]
     sampling = kwargs.get('sampling', None)  # str: either "Chebyshev" or "uniform"
     interpolator = kwargs.get('interpolator', None)  # Interpolator
@@ -196,20 +200,22 @@ class Operator(FuzzyNumber, ABC):
     * fuzzy.number.default_resolution  --- not used in operators; given for :meth:`._get_numerical`
       and related calls (:meth:`.FuzzyNumber.map`, :meth:`.FuzzyNumber.crisp`).
 
-    If you set an attribute of an operator via ``**kwargs, it sets the attribute in itself, its operands,
+    If you set an attribute of an operator via ``**kwargs``, it sets the attribute in itself, its operands,
     their operands, and so on---its whole sub-tree---except where these have already been explicitly set.
 
     How do you make an operator?  I think by just:
+
     1. implement __str__
     2. implement d_op (if the superclass doesn't do the right thing with it).
     3. define either:
+
         a. l_op if it's a logic operator, or
         b. m_op if it's a math operator
+
     4. implement t (can I automate that too?)
 
     The unary/binary/associative classes should handle the handling of 1,2,many operands in their get_numericals
-    I think that's it.
-        """
+    I think that's it."""
 
     def __init__(self, *operands: Operand, **kwargs):
         """See :meth:`.fuzzy_ctrl` for parameter docs.
@@ -238,11 +244,11 @@ class Operator(FuzzyNumber, ABC):
         disassemble them, operate on their parts, return a numerical result.
 
             * fuzzy.norm.default_norm --- needed for most math an logic operators.
-    * fuzzy.truth.default_threshold --- needed for :class:`.Weight`.
-    * fuzzy.number.default_sampling_method --- maybe; used when resampling in some operators.
-    * fuzzy.number.default_interpolator --- maybe; used when resampling in some operators.
-    * fuzzy.number.default_crisper  --- not used in operators; given for :meth:`.FuzzyNumber.crisp`.
-    * fuzzy.number.default_resolution"""
+            * fuzzy.truth.default_threshold --- needed for :class:`.Weight`.
+            * fuzzy.number.default_sampling_method --- maybe; used when resampling in some operators.
+            * fuzzy.number.default_interpolator --- maybe; used when resampling in some operators.
+            * fuzzy.number.default_crisper  --- not used in operators; given for :meth:`.FuzzyNumber.crisp`.
+            * fuzzy.number.default_resolution"""
         # attribute setups look like:
         # n = getattr(self, 'norm', default_norm)
         # threshold = getattr(self, 'threshold', default_threshold)
@@ -307,10 +313,27 @@ class Operator(FuzzyNumber, ABC):
         E.g.  Suppose an operator is simple "+5"---it adds a five to everything.  It's operand has a domain of
         d = [0,10].  We want to know the resulting domain: ``d_op(d, False)`` tells us: [5,15].  We are only interested
         in results on a = [0,10], so when we want to do the operation by getting the numerical result, we tell the
-        operator not to sample where it won't matter to us, so it does ``d_op(a, True) to find that this means [-5,5].
+        operator not to sample where it won't matter to us, so it does ``d_op(a, True)`` to find that this means [-5,5].
         Its business is then on the intersection of that and what it has: [-5,5].intersection[0,10], so it only
         samples [0,5] of its operand to create the numerical it will return.
-         """
+        """
+
+    # Here is where all the operator functions used in expressions go:
+
+    def not_(self, **kwargs) -> Operator:
+        return Not(self, **kwargs)
+
+    # Here is where all the operator overloads used in expressions go:
+
+    def __invert__(self) -> Operator:
+        """Overloads the unary ``~`` (bitwise not) operator."""
+        # There's no way to make this operate on ``float``, ``int``, or ``bool`` objects because there is no
+        # __rinvert__ method in which to put the Truth(float(self)).clip().not_(), because it's unary.
+        return self.not_()
+
+    # @staticmethod
+    # def not_(a: FuzzyNumber, norm: Norm = None) -> Operator:
+    #     return Not(norm, a)
 
     # abstract methods:  _get_domain, _get_numerical, t.  Can I do anything here?
 
@@ -436,7 +459,6 @@ class UnaryOperator(Operator, ABC):
         super().__init__(a, **kwargs)
         self.operands = [a]
         super()._prepare_operand(a, **kwargs)
-        print(self.operands[0])
 
     def _get_domain(self) -> Union[Domain, None]:
         """What the domain of the result will be: the domain of the operand, transformed."""
@@ -605,56 +627,56 @@ class Imp(LogicOperator, BinaryOperator):
     name = str("→ IMPLIES →")
 
     def _op(self, n: Norm, a: TruthOperand, b: TruthOperand) -> TruthOperand:
-        return Truth.imp(a, b, n)
+        return Truth.imp(a, b, norm=n)
 
 
 class Con(LogicOperator, BinaryOperator):
     name = str("← CONVERSE IMPLIES ←")
 
     def _op(self, n: Norm, a: TruthOperand, b: TruthOperand) -> TruthOperand:
-        return Truth.con(a, b, n)
+        return Truth.con(a, b, norm=n)
 
 
 class Iff(LogicOperator, BinaryOperator):
     name = str("↔ IF AND ONLY IF ↔")
 
     def _op(self, n: Norm, a: TruthOperand, b: TruthOperand) -> TruthOperand:
-        return Truth.iff(a, b, n)
+        return Truth.iff(a, b, norm=n)
 
 
 class Xor(LogicOperator, BinaryOperator):
     name = str("⨁ EXCLUSIVE OR ⨁")
 
     def _op(self, n: Norm, a: TruthOperand, b: TruthOperand) -> TruthOperand:
-        return Truth.xor(a, b, n)
+        return Truth.xor(a, b, norm=n)
 
 
 class Nand(LogicOperator, BinaryOperator):
     name = str("↑ NAND ↑")
 
     def _op(self, n: Norm, a: TruthOperand, b: TruthOperand) -> TruthOperand:
-        return Truth.nand(a, b, n)
+        return Truth.nand(a, b, norm=n)
 
 
 class Nor(LogicOperator, BinaryOperator):
     name = str("↓ NOR ↓")
 
     def _op(self, n: Norm, a: TruthOperand, b: TruthOperand) -> TruthOperand:
-        return Truth.nor(a, b, n)
+        return Truth.nor(a, b, norm=n)
 
 
 class Nimp(LogicOperator, BinaryOperator):
     name = str("↛ NON-IMPLICATION ↛")
 
     def _op(self, n: Norm, a: TruthOperand, b: TruthOperand) -> TruthOperand:
-        return Truth.nimp(a, b, n)
+        return Truth.nimp(a, b, norm=n)
 
 
 class Ncon(LogicOperator, BinaryOperator):
     name = str("↚ CONVERSE NON-IMPLICATION ↚")
 
     def _op(self, n: Norm, a: TruthOperand, b: TruthOperand) -> TruthOperand:
-        return Truth.ncon(a, b, n)
+        return Truth.ncon(a, b, norm=n)
 
 
 class AssociativeOperator(Operator, ABC):
@@ -740,27 +762,12 @@ class Or(LogicOperator, AssociativeOperator):
     def _op(self, n: Norm, *operands: TruthOperand) -> TruthOperand:
         return n.or_(*operands)
 
+
 # AssociativeOperator:---  logic: and, or;  math:  add, mul
 # Qualifiers:  normalize, weight, focus
 # FuzzyExpression---with all the static methods;  overloaded operators
 
-# class Abs(UnaryOperator):
-#     """"""
+# class Op(Operator):
 #
-#     def __str__(self):
-#         a = self.a.__str__()
-#         return str(f"ABS({a})")
 #
-#     def evaluate(self, resolution: float) -> _Numerical:
-#         """"""
-#         na = self.a.evaluate(resolution)
-#         na.d = (-na.d[1], -na.d[0])  # This will take resampling and ORing... but how far?  ...
-#         if na.xp is not None:
-#             xpv = -1 * xpv
-#             na.xp = np.column_stack((xpv, xps))
-#         na.v = -1 * na.v
-#         return na
 #
-#     def suitability(self, v: float) -> float:
-#         """"""
-#         return abs(self.a.suitability(v))

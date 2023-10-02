@@ -1,18 +1,42 @@
 # Here is where I am testing or playing around or something.
 # from fuzzy.operator import *
+import numpy as np
+
 from fuzzy.literal import *
 from fuzzy.truth import *
 from fuzzy.operator import *
+from numpy import *
+import math
+import matplotlib.pyplot as plt
+from  matplotlib.colors import LinearSegmentedColormap
 
 # fuzzy_ctrl(norm={'n1':"str", 'n1p':[-80], 'n2':"hhp", 'n2p':[20], 'cnp':70})
-# fuzzy_ctrl_show()
+fuzzy_ctrl(norm={'n1':"mm", 'n1p':[-60]})
+fuzzy_ctrl_show()
 
 # t = Triangle(-.9,0.1,1.1, elsewhere=0, points=[(2, .8)])
 # a = Triangle(0, 4, 8, elsewhere=1)
 # b = Triangle(4, 8, 12, elsewhere=0)
-a = Trapezoid(0, 2, 4, 6, elsewhere=0, points=[(3, .2), (8, 1)])
-b = Trapezoid(2, 4, 6, 8, elsewhere=0, points=[(3, .2), (2.5, .5)])  #, points=[(0,.5), (1,.5), (2,.5), (3,.5), (4,.5), (5,.5), (6,.5), (7,.5), (8,.5), (9,.5)]
-c = Trapezoid(4, 6, 8, 10, elsewhere=0)
+# a = Trapezoid(0, 2, 4, 6, elsewhere=0, points=[(3, .2), (8, 1)])
+# b = Trapezoid(2, 4, 6, 8, elsewhere=0, points=[(3, .2), (2.5, .5)])  #, points=[(0,.5), (1,.5), (2,.5), (3,.5), (4,.5), (5,.5), (6,.5), (7,.5), (8,.5), (9,.5)]
+# c = Trapezoid(4, 6, 8, 10, elsewhere=0)
+
+a = Bell(4, 3, 1)
+b = Bell(8, 3, 1)
+
+#
+
+
+
+# print(a)
+# print("a.not_()---")
+# print(type(b))
+# print(b)
+# print("Operator.not_(a)---")
+# print(type(c))
+# print(c)
+#
+# print(~a)
 
 # t = Not(a)
 # t = Negative(a)
@@ -26,12 +50,12 @@ c = Trapezoid(4, 6, 8, 10, elsewhere=0)
 # t = Nor(a, b)
 # t = Nimp(a, b)
 # c = Ncon(a, b)
-t = And(a, b, c, norm={'n1':"str", 'n1p':[-80], 'n2':"hhp", 'n2p':[20], 'cnp':70})    #, norm={'n1':"str", 'n1p':[-80], 'n2':"hhp", 'n2p':[20], 'cnp':70})
+# t = And(a, b, c, norm={'n1':"str", 'n1p':[-80], 'n2':"hhp", 'n2p':[20], 'cnp':70})    #, norm={'n1':"str", 'n1p':[-80], 'n2':"hhp", 'n2p':[20], 'cnp':70})
 # t = Or(a, b, c)
 
-print(t)
+# print(t)
 
-t.display()
+# t.display()
 
 # print(t.t(1))
 # z, p, o = Truth(0), Truth(.5), Truth(1),
@@ -93,31 +117,6 @@ t.display()
 # print(f"0010 = {~(f >> f)}, {~(f >> t)}, {~(t >> f)}, {~(t >> t)}")
 # print(f"0100 = {~(f << f)}, {~(f << t)}, {~(t << f)}, {~(t << t)}")
 
-# TODO: una: l/a; bin: l/a;  ass: l/a;  width/focus, outputs, crisp etc.
-
-
-# # Here's a way to view fuzzy numbers (1D functions):
-# def plot(t: Value):
-#     fn = t.evaluate(.1)
-#     plt.rcParams["figure.figsize"] = [7.50, 3.50]
-#     plt.rcParams["figure.autolayout"] = True
-#     plt.xlim(-11, 11)  # domain to plot
-#     plt.ylim(-.1, 1.1)
-#     plt.grid()
-#
-#     v = fn.v  # [:, 0]
-#     s = fn.s  # [:, 1]
-#     plt.plot(v, s, color="red")
-#
-#     if fn.xp is not None:
-#         xpv = fn.xp[:, 0]
-#         xps = fn.xp[:, 1]
-#         plt.plot(xpv, xps, "o", markersize=3, color="blue")
-#     # print(f"xp: {fn.xp}")
-#     plt.title("Line graph")
-#     plt.show()
-
-# plot(t)
 
 # #  This animates the norms (by strictness) for inspection.
 #
@@ -182,13 +181,6 @@ t.display()
 #
 # plt.show()
 
-# x = Truth(.2)
-# print(f"x={x}, 100*x={100*x}, x.not_()={x.not_()}, not x={not x}, ~x={~x}")
-# y = Truth(.7)
-# print(f"y={y}, 100*y={100*y}, y.not_()={y.not_()}, not y={not y}, ~y={~y}")
-f = .499
-# print(f"f={f}, 100*f={100*f}") # , f.not_()={f.not_()}, ~f={~f}
-
 
 # c = Truth(.4)
 # d = Truth(.5)
@@ -236,24 +228,255 @@ f = .499
 # print(f">>=1101: {fa>>(fa)}, {fa>>(tr)}, {tr>>(fa)}, {tr>>(tr)}")
 # print(f"<<=1011: {fa<<(fa)}, {fa<<(tr)}, {tr<<(fa)}, {tr<<(tr)}")
 
-# Truth.default_threshold = .8
-# Truth.setGlobalThreshold(.8)
+#
+def display_number_logic(a: FuzzyNumber, b: FuzzyNumber) -> None:    # This generates logic_on_numbers.png
+    px = 1 / plt.rcParams['figure.dpi']  # pixel in inches
+    plt.rcParams['figure.figsize'] = [px*800, px*800/1.618]
+    plt.rcParams["figure.autolayout"] = True
+    fig, ax = plt.subplots(nrows=4, ncols=3)
+    fig.patch.set_facecolor('#eee8d5')
 
-# print(f"true: {Truth(0).isValid()}{Truth(.5).isValid()}{Truth(1).isValid()}")
-# print(f"false{Truth(-1).isValid()}{Truth(1.1).isValid()}{Truth(2).isValid()}")
-# print("w=0")
-# print(
-#     f"0, {Truth(0).weight(0)};  .25, {Truth(.25).weight(0)};  .5, {Truth(.5).weight(0)};  1, {Truth(1).weight(0)}.")
-# print("w=100")
-# print(f".01, {Truth(.01).weight(100)};  .49, {Truth(.49).weight(100)};  ")
-# print(f".51, {Truth(.51).weight(100)};  .99, {Truth(.99).weight(100)}.")
-# print("w=-100")
-# print(f"0, {Truth(0).weight(-100)};  .01, {Truth(.01).weight(-100)};  .5, {Truth(.5).weight(-100)};  ")
-# print(f".99, {Truth(.99).weight(-100)};  1, {Truth(1).weight(-100)}.")
-#
-# print("w=50")
-# print(f".25, {Truth(.25).weight(50)};  .75, {Truth(.75).weight(50)};  ")
-#
-# tarray = np.linspace(0, 1, 11)
-#
-# print(Truth.weight(tarray, 50))
+    v = linspace(-3, 15, 400)
+    colora="#268bd2"
+    colorb="#b58900"   # "#2aa198"   # "#859900"
+    colorc="#d30102"
+    facecolor="#fdf6e3"
+    lw=2
+
+    sa = a.t(v)
+    sb = b.t(v)
+
+    for axs in ax.flat:
+        axs.label_outer()
+        axs.set_facecolor(facecolor)
+        axs.set_xticks([], [])
+        axs.plot(v, sa, color=colora, linewidth=lw, alpha=.4)
+        axs.plot(v, sb, color=colorb, linewidth=lw, alpha=.4)
+
+
+    sc = Not(a).t(v)
+    ax[0, 0].plot(v, sc, color=colorc, linewidth=lw, alpha=1)
+    ax[0, 0].set_title('a.not(),      ~a')
+    sc = Not(b).t(v)
+    ax[1, 0].plot(v, sc, color=colorc, linewidth=lw, alpha=1)
+    ax[1, 0].set_title('b.not(),      ~b')
+    sc = Imp(a,b).t(v)
+    ax[2, 0].plot(v, sc, color=colorc, linewidth=lw, alpha=1)
+    ax[2, 0].set_title('a.imp(b),      a >> b')
+    sc = Nimp(a,b).t(v)
+    ax[3, 0].plot(v, sc, color=colorc, linewidth=lw, alpha=1)
+    ax[3, 0].set_title('a.nimp(b),      ~(a >> b)')
+
+    sc = And(a,b).t(v)
+    ax[0, 1].plot(v, sc, color=colorc, linewidth=lw, alpha=1)
+    ax[0, 1].set_title('a.and_(b),      a & b')
+    sc = Nand(a,b).t(v)
+    ax[1, 1].plot(v, sc, color=colorc, linewidth=lw, alpha=1)
+    ax[1, 1].set_title('a.nand(b),      ~(a & b)')
+    sc = Con(a,b).t(v)
+    ax[2, 1].plot(v, sc, color=colorc, linewidth=lw, alpha=1)
+    ax[2, 1].set_title('a.con(b),      a << b')
+    sc = Ncon(a,b).t(v)
+    ax[3, 1].plot(v, sc, color=colorc, linewidth=lw, alpha=1)
+    ax[3, 1].set_title('a.ncon(b),      ~(a << b)')
+
+    sc = Or(a, b).t(v)
+    ax[0, 2].plot(v, sc, color=colorc, linewidth=lw, alpha=1)
+    ax[0, 2].set_title('a.or_(b),      a | b')
+    sc = Nor(a, b).t(v)
+    ax[1, 2].plot(v, sc, color=colorc, linewidth=lw, alpha=1)
+    ax[1, 2].set_title('a.nor(b),      ~(a | b)')
+    sc = Iff(a, b).t(v)
+    ax[2, 2].plot(v, sc, color=colorc, linewidth=lw, alpha=1)
+    ax[2, 2].set_title('a.iff(b),      ~(a @ b)')
+    sc = Xor(a, b).t(v)
+    ax[3, 2].plot(v, sc, color=colorc, linewidth=lw, alpha=1)
+    ax[3, 2].set_title('a.xor(b),      a @ b')
+
+    plt.show()
+
+
+def display_logic_ops() -> None:    # This generates logic_heatmaps_prod.png
+    px = 1 / plt.rcParams['figure.dpi']  # pixel in inches
+    plt.rcParams['figure.figsize'] = [px*800, px*800/1.24245436]
+    plt.rcParams["figure.autolayout"] = True
+    fig, ax = plt.subplots(nrows=3, ncols=4)
+    fig.patch.set_facecolor('#eee8d5')
+
+    facecolor="#fdf6e3"
+    lev=9
+    # colormap = "cividis"  # "bone""cividis""BrBG""pink""copper"  #  The following sets up solarized linear lightness
+    cdict = {'red': [[0.000, 0.0, 0.0],
+                     [0.036, 7/255, 7/255],
+                     [0.349, 88/255, 88/255],
+                     [0.410, 101/255, 101/255],
+                     [0.530, 131/255, 131/255],
+                     [0.590, 147/255, 147/255],
+                     [0.927, 238/255, 238/255],
+                     [1.0, 253/255, 253/255]],
+             'green': [[0.000, 43/255, 43/255],
+                     [0.036, 54/255, 54/255],
+                     [0.349, 110/255, 110/255],
+                     [0.410, 123/255, 123/255],
+                     [0.530, 148/255, 148/255],
+                     [0.590, 161/255, 161/255],
+                     [0.927, 232/255, 232/255],
+                     [1.0, 246/255, 246/255]],
+             'blue': [[0.000, 54/255, 54/255],
+                     [0.036, 66/255, 66/255],
+                     [0.349, 117/255, 117/255],
+                     [0.410, 131/255, 131/255],
+                     [0.530, 150/255, 150/255],
+                     [0.590, 161/255, 161/255],
+                     [0.927, 213/255, 213/255],
+                     [1.0, 227/255, 227/255]]}
+    colormap = LinearSegmentedColormap('testCmap', segmentdata=cdict, N=256)
+
+    a = b = linspace(0, 1, 400)
+
+    for axs in ax.flat:
+        axs.label_outer()
+        axs.set_facecolor(facecolor)
+        axs.set_xticks([0, .5, 1], [0, .5, 1])
+        axs.set_yticks([0, .5, 1], [0, .5, 1])
+        axs.set_box_aspect(1)
+    x = a.reshape(1, -1)
+    y = b.reshape(-1, 1)
+    znota = Truth.not_(x)
+    znota = np.tile(znota, (400, 1))
+    znotb = Truth.not_(y)
+    znotb = np.tile(znotb, (1, 400))
+    zand = Truth.and_(x, y)
+    zor = Truth.or_(x, y)
+    zimp = Truth.imp(x, y)
+    zcon = Truth.con(x, y)
+    znand = Truth.nand(x, y)
+    znor = Truth.nor(x, y)
+    znimp = Truth.nimp(x, y)
+    zncon = Truth.ncon(x, y)
+    ziff = Truth.iff(x, y)
+    zxor = Truth.xor(x, y)
+
+    x, y = x.flatten(), y.flatten()
+    ax[0, 0].contourf(x, y, znota, levels = lev, cmap = colormap)
+    ax[0, 0].set_title('not    ~a')
+    ax[0, 1].contourf(x, y, znotb, levels = lev, cmap = colormap)
+    ax[0, 1].set_title('not    ~b')
+    ax[0, 2].contourf(x, y, zand, levels = lev, cmap = colormap)
+    ax[0, 2].set_title('and_    a & b')
+    ax[0, 3].contourf(x, y, zor, levels = lev, cmap = colormap)
+    ax[0, 3].set_title('or_    a | b')
+
+    ax[1, 0].contourf(x, y, zimp, levels = lev, cmap = colormap)
+    ax[1, 0].set_title('imp   a >> b')
+    ax[1, 1].contourf(x, y, zcon, levels = lev, cmap = colormap)
+    ax[1, 1].set_title('con   a << b')
+    ax[1, 2].contourf(x, y,  znand, levels = lev, cmap = colormap)
+    ax[1, 2].set_title('nand   ~(a & b)')
+    ax[1, 3].contourf(x, y,  znor, levels = lev, cmap = colormap)
+    ax[1, 3].set_title('nor   ~(a | b)')
+
+    ax[2, 0].contourf(x, y, znimp, levels = lev, cmap = colormap)
+    ax[2, 0].set_title('nimp   ~(a >> b)')
+    ax[2, 1].contourf(x, y, zncon, levels = lev, cmap = colormap)
+    ax[2, 1].set_title('ncon   ~(a << b)')
+    ax[2, 2].contourf(x, y,  ziff, levels = lev, cmap = colormap)
+    ax[2, 2].set_title('iff   ~(a @ b)')
+    ax[2, 3].contourf(x, y,  zxor, levels = lev, cmap = colormap)
+    ax[2, 3].set_title('xor    a @ b')
+
+    plt.show()
+
+
+
+def display_norms() -> None:    # This generates t-norm_gallery.png
+    px = 1 / plt.rcParams['figure.dpi']  # pixel in inches
+    plt.rcParams['figure.figsize'] = [px*800, px*800/1.618]
+    plt.rcParams["figure.autolayout"] = True
+    fig, ax = plt.subplots(nrows=2, ncols=4)
+    fig.patch.set_facecolor('#eee8d5')
+
+    facecolor="#fdf6e3"
+    lev=9
+    # colormap = "cividis"  # "bone""cividis""BrBG""pink""copper"  #  The following sets up solarized linear lightness
+    cdict = {'red': [[0.000, 0.0, 0.0],
+                     [0.036, 7/255, 7/255],
+                     [0.349, 88/255, 88/255],
+                     [0.410, 101/255, 101/255],
+                     [0.530, 131/255, 131/255],
+                     [0.590, 147/255, 147/255],
+                     [0.927, 238/255, 238/255],
+                     [1.0, 253/255, 253/255]],
+             'green': [[0.000, 43/255, 43/255],
+                     [0.036, 54/255, 54/255],
+                     [0.349, 110/255, 110/255],
+                     [0.410, 123/255, 123/255],
+                     [0.530, 148/255, 148/255],
+                     [0.590, 161/255, 161/255],
+                     [0.927, 232/255, 232/255],
+                     [1.0, 246/255, 246/255]],
+             'blue': [[0.000, 54/255, 54/255],
+                     [0.036, 66/255, 66/255],
+                     [0.349, 117/255, 117/255],
+                     [0.410, 131/255, 131/255],
+                     [0.530, 150/255, 150/255],
+                     [0.590, 161/255, 161/255],
+                     [0.927, 213/255, 213/255],
+                     [1.0, 227/255, 227/255]]}
+    colormap = LinearSegmentedColormap('testCmap', segmentdata=cdict, N=256)
+
+    a = b = linspace(0, 1, 400)
+
+    for axs in ax.flat:
+        axs.label_outer()
+        axs.set_facecolor(facecolor)
+        axs.set_xticks([0, .5, 1], [0, .5, 1])
+        axs.set_yticks([0, .5, 1], [0, .5, 1])
+        axs.set_box_aspect(1)
+    x = a.reshape(1, -1)
+    y = b.reshape(-1, 1)
+    # The following is for the t-norm gallery:
+    zlax = Truth.iff(x, y, norm={'n1':"lx"})
+    zmin = Truth.iff(x, y, norm={'n1':"mm"})
+    zham = Truth.iff(x, y, norm={'n1':"hh"})
+    zgog = Truth.iff(x, y, norm={'n1':"pp"})
+    zein = Truth.iff(x, y, norm={'n1':"ee"})
+    znil = Truth.iff(x, y, norm={'n1':"nn"})
+    zluk = Truth.iff(x, y, norm={'n1':"lb"})
+    zdra = Truth.iff(x, y, norm={'n1':"dd"})
+    # The following is for the strictness gallery:
+    # zlax = Truth.iff(x, y, norm={'n1':"str", 'n1p':[-81]})
+    # zmin = Truth.iff(x, y, norm={'n1':"str", 'n1p':[-59]})
+    # zham = Truth.iff(x, y, norm={'n1':"str", 'n1p':[-37]})
+    # zgog = Truth.iff(x, y, norm={'n1':"str", 'n1p':[-15]})
+    # zein = Truth.iff(x, y, norm={'n1':"str", 'n1p':[7]})
+    # znil = Truth.iff(x, y, norm={'n1':"str", 'n1p':[29]})
+    # zluk = Truth.iff(x, y, norm={'n1':"str", 'n1p':[51]})
+    # zdra = Truth.iff(x, y, norm={'n1':"str", 'n1p':[73]})
+
+    x, y = x.flatten(), y.flatten()
+    ax[0, 0].contourf(x, y, zlax, levels = lev, cmap = colormap)
+    ax[0, 0].set_title('lax')       #('-81')       #
+    ax[0, 1].contourf(x, y, zmin, levels = lev, cmap = colormap)
+    ax[0, 1].set_title('min-max (Gödel-Zadeh)')       #('-59')       #
+    ax[0, 2].contourf(x, y, zham, levels = lev, cmap = colormap)
+    ax[0, 2].set_title('Hamacher')       #('-37')       #
+    ax[0, 3].contourf(x, y, zgog, levels = lev, cmap = colormap)
+    ax[0, 3].set_title('product (Goguen)')       #('-15')       #
+
+    ax[1, 0].contourf(x, y, zein, levels = lev, cmap = colormap)
+    ax[1, 0].set_title('Einstein')       #('7')       #
+    ax[1, 1].contourf(x, y, znil, levels = lev, cmap = colormap)
+    ax[1, 1].set_title('nilpotent (Kleene-Dienes)')       #('29')       #
+    ax[1, 2].contourf(x, y,  zluk, levels = lev, cmap = colormap)
+    ax[1, 2].set_title('Łukasiewicz')       #('51')       #
+    ax[1, 3].contourf(x, y,  zdra, levels = lev, cmap = colormap)
+    ax[1, 3].set_title('drastic')       #('73')       #
+
+    plt.show()
+
+
+
+display_norms()
+
+
