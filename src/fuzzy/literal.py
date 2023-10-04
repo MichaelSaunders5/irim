@@ -2,17 +2,18 @@
 
 from __future__ import annotations
 
+from abc import abstractmethod
 from math import log, exp, sqrt, pi, isfinite
 from typing import Union, Tuple
-from abc import abstractmethod
 
 import numpy as np
 from scipy.stats import norm as gauss
 
 from fuzzy.crisp import Interpolator
 from fuzzy.number import Domain, _Numerical, default_interpolator, default_sampling_method, _guard
-from fuzzy.truth import Truth, default_threshold
 from fuzzy.operator import Operator
+from fuzzy.truth import Truth, default_threshold
+
 
 def _scale(data: Union[np.ndarray, Iterable[float], float],
            expected_range: Tuple[float, float] = (0, 1), intended_range: Tuple[float, float] = (0, 1),
@@ -68,7 +69,6 @@ def _check_points(points: np.ndarray) -> (np.ndarray, np.ndarray):
         raise ValueError(f"You cannot define two truths for the same value.  "
                          f"You have more than one truth at v={dup_values}.")
     return xv, xt
-
 
 
 class Literal(Operator):  # user only implements _sample
@@ -272,7 +272,10 @@ class Literal(Operator):  # user only implements _sample
         v = np.atleast_1d(v)
         e = np.full_like(v, self.e)
         c = self._sample(v)
-        c_e = np.where((v < self.d[0]) | (v > self.d[1]), e, c)
+        if self.d is None:
+            c_e = e
+        else:
+            c_e = np.where((v < self.d[0]) | (v > self.d[1]), e, c) # in an Exactly, d is None.
         for i, value in enumerate(v):
             j = np.where(value == self.xv)[0]
             if j is None or len(j) == 0:
@@ -281,12 +284,11 @@ class Literal(Operator):  # user only implements _sample
             c_e = _guard(c_e)
         return c_e if a else c_e[0]
 
-
     def _operate(self, precision: int, allowed_domain: Domain = None):
         pass
+
     def _op(self, *args) -> Union[np.ndarray, float]:
         pass
-
 
 
 class Triangle(Literal):
@@ -865,6 +867,7 @@ class Truthy(_Numerical):
             raise ValueError("A truth must be on [0,1]")
         t = float(t)
         super().__init__(None, 0, None, None, None, None, t)
+
 
     def __str__(self):
         # s = super().__str__()

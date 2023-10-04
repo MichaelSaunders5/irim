@@ -9,9 +9,9 @@ from typing import Union, Tuple  # , ClassVar,
 
 import numpy as np
 
-import fuzzy.norm
-from fuzzy.crisp import Interpolator
+import fuzzy.norm           # ???
 from fuzzy.norm import Norm, default_norm
+from fuzzy.crisp import Interpolator
 from fuzzy.number import FuzzyNumber, Domain, default_sampling_method, default_interpolator, _Numerical
 from fuzzy.truth import Truth
 
@@ -23,10 +23,10 @@ MathOperand = Union[FuzzyNumber, float, int, bool]  # --> numbers get promoted t
 Operand = Union[LogicOperand, MathOperand]  # = LogicOperand.  Not really used, I think
 
 
+
 def _handle_defaults(**kwargs) -> Tuple:
     """Used for setting obscure defaults, globally by :meth:`.fuzzy_ctrl` or in a calculation or on
-    individual :class:`.Operator`\\ s.  See. :meth:`.fuzzy_ctrl`."""
-    norm, threshold, sampling, interpolator, resolution, crisper = None, None, None, None, None, None
+    individual :class:`.Operator`\\ s.  See :meth:`.fuzzy_ctrl`."""
     norm_args = kwargs.get('norm', None)
     if norm_args is not None:
         norm = Norm.define(**norm_args)
@@ -185,6 +185,26 @@ def _get_sample_points(cd: Domain, cn: int, sampling_method: str) -> np.ndarray:
     return cv
 
 
+def _promote_and_call(s, b, logic, fn_name, flip):
+    if flip:
+        s, b = b, s
+    if isinstance(b, Truth):  # If it is a Truth, make it a Truthy
+        from fuzzy.literal import Truthy
+        b = Truthy(b)
+    elif isinstance(b, (float, int, bool)):  # If it is a number, make it a FuzzyNumber
+        b = float(b)
+        if logic and b>=0 and b<=1:         # If it's logical and in range, a Truthy, otherwise, Exactly
+            from fuzzy.literal import Truthy
+            b = Truthy(b)
+        else:
+            from fuzzy.literal import Exactly
+            b = Exactly(b)
+    if flip:
+        s, b = b, s
+    from fuzzy.operator import Operator     # Now both are FuzzyNumber, so prepare to call Operator
+    return eval("Operator." + fn_name + "(s, b)")   # Call the operator for FuzzyNumbers
+
+
 class Operator(FuzzyNumber, ABC):
     """The base class for operators.  It handles obscure calculation parameters usually left to global defaults.
 
@@ -237,6 +257,7 @@ class Operator(FuzzyNumber, ABC):
         if allowed_domain is not None:
             allowed_domain = self.d_op(True, allowed_domain)  # Only sample where it matters.
         return self._operate(precision, allowed_domain)
+
 
     @abstractmethod
     def _operate(self, precision: int, allowed_domain: Domain = None):  # -> _Numerical
@@ -321,19 +342,187 @@ class Operator(FuzzyNumber, ABC):
     # Here is where all the operator functions used in expressions go:
 
     def not_(self, **kwargs) -> Operator:
-        return Not(self, **kwargs)
+        """Returns a :class:`.Not` object with ``self`` as the operand (for logical negation, ¬a).
+        For ``kwargs`` see :meth:`.fuzzy_ctrl`.
 
+        Call by:
+
+        * ``a.not_()``
+        * ``Operator.not_(b)``
+        * ``~a``
+
+        Where
+
+        * ``a`` is a :class:`.FuzzyNumber` (e.g., an :class:`.Operator` or :class:`.Literal`); and
+        * ``b`` is a :class:`.FuzzyNumber`, or ``float`` or ``int`` or ``bool``.
+        """
+        return Not(self, **kwargs)
+    def neg(self, **kwargs) -> Operator:
+        """Returns a :class:`.Negative` object with ``self`` as the operand (for arithmetic negation, -a).
+        For ``kwargs`` see :meth:`.fuzzy_ctrl`.
+
+        Call by:
+
+        * ``a.neg()``
+        * ``Operator.neg(b)``
+        * ``-a``
+
+        Where
+
+        * ``a`` is a :class:`.FuzzyNumber` (e.g., an :class:`.Operator` or :class:`.Literal`); and
+        * ``b`` is a :class:`.FuzzyNumber`, or ``float`` or ``int`` or ``bool``.
+        """
+        return Negative(self, **kwargs)
+    def reciprocal(self, **kwargs) -> Operator:
+        """Returns a :class:`.Reciprocal` object with ``self`` as the operand (for 1/a).
+        For ``kwargs`` see :meth:`.fuzzy_ctrl`.
+
+        Call by:
+
+        * ``a.reciprocal()``
+        * ``Operator.reciprocal(b)``
+
+        Where
+
+        * ``a`` is a :class:`.FuzzyNumber` (e.g., an :class:`.Operator` or :class:`.Literal`); and
+        * ``b`` is a :class:`.FuzzyNumber`, or ``float`` or ``int`` or ``bool``.
+        """
+        return Reciprocal(self, **kwargs)
+    def abs(self, **kwargs) -> Operator:
+        """Returns a :class:`.Absolute` object with ``self`` as the operand (for absolute value, :math:`|a|`).
+        For ``kwargs`` see :meth:`.fuzzy_ctrl`.
+
+        Call by:
+
+        * ``a.abs()``
+        * ``Operator.abs(b)``
+        * ``+a``
+
+        Where
+
+        * ``a`` is a :class:`.FuzzyNumber` (e.g., an :class:`.Operator` or :class:`.Literal`); and
+        * ``b`` is a :class:`.FuzzyNumber`, or ``float`` or ``int`` or ``bool``.
+        """
+        return Absolute(self, **kwargs)
+
+
+    def imp(self, b: Operand, **kwargs) -> Operator:
+        """Returns an :class:`.And` object with ``self`` and ``b`` as operands (for self → b).
+        For ``kwargs`` see :meth:`.fuzzy_ctrl`.
+
+        Call by:
+
+        * ``a.imp()``
+        * ``Operator.imp(a, b)``
+        * ``a >> b``
+
+        Where
+
+        * ``self``, or ``a`` is a :class:`.FuzzyNumber` (e.g., an :class:`.Operator` or :class:`.Literal`); and
+        * ``b`` is a :class:`.FuzzyNumber`, or :class:`.Truth`, or ``float`` or ``int`` or ``bool``.
+        """
+        return Imp(self, b, **kwargs)
     # Here is where all the operator overloads used in expressions go:
 
     def __invert__(self) -> Operator:
-        """Overloads the unary ``~`` (bitwise not) operator."""
+        """Overloads the unary ``~`` (bitwise not) operator to perform logical negation on ``self``."""
         # There's no way to make this operate on ``float``, ``int``, or ``bool`` objects because there is no
-        # __rinvert__ method in which to put the Truth(float(self)).clip().not_(), because it's unary.
+        # __rinvert__ method in which to put the Operator.not_(Exact(float(self))), because it's unary.
         return self.not_()
+    def __neg__(self) -> Operator:
+        """Overloads the unary ``-`` (minus) operator to perform arithmetic negation on ``self``."""
+        # There's no way to make this operate on ``float``, ``int``, or ``bool`` objects because there is no
+        # __neg__ method in which to put the Operator.neg(Exact(float(self))), because it's unary.
+        return self.neg()
+    def __pos__(self) -> Operator:
+        """Overloads the unary ``+`` (positive) operator to perform absolute value on ``self``."""
+        # There's no way to make this operate on ``float``, ``int``, or ``bool`` objects because there is no
+        # __pos__ method in which to put the Operator.abs(Exact(float(self))), because it's unary.
+        return self.abs()
 
-    # @staticmethod
-    # def not_(a: FuzzyNumber, norm: Norm = None) -> Operator:
-    #     return Not(norm, a)
+
+    def __and__(self, other: Truth) -> Truth:
+        """Overloads the binary ``&`` (bitwise and) operator."""
+        return Truth.and_(self, Truth(float(other), clip=True))
+
+    def __rand__(self, other: Truth) -> Truth:
+        """Ensures that the overloading of ``&`` works as long as one operand is a ``Truth`` object."""
+        return Truth.and_(Truth(float(other), clip=True), self)
+
+    def __or__(self, other: Truth) -> Truth:
+        """Overloads the binary ``|`` (bitwise or) operator."""
+        return Operator.or_(self, _promote_operand(True, other))
+
+    def __ror__(self, other: Truth) -> Truth:
+        """Ensures that the overloading of ``|`` works as long as one operand is a ``Truth`` object."""
+        return Operator.or_(_promote_operand(True, other), self)
+
+    def __rshift__(self, other: Truth) -> Truth:
+        """Overloads the binary ``>>`` (bitwise right shift) operator."""
+        # return Operator.imp(self, _promote_operand(True, other))
+        return _promote_and_call(self, other, True, "imp", False)
+
+    def __rrshift__(self, other: Truth) -> Truth:
+        """Ensures that the overloading of ``>>`` works as long as one operand is a ``Truth`` object."""
+        # return Operator.imp(_promote_operand(True, other), self)
+        return _promote_and_call(other, self, True, "imp", True)
+
+    def __lshift__(self, other: Truth) -> Truth:
+        """Overloads the binary ``<<`` (bitwise left shift) operator."""
+        return Truth.con(self, Truth(float(other), clip=True))
+
+    def __rlshift__(self, other: Truth) -> Truth:
+        """Ensures that the overloading of ``<<`` works as long as one operand is a ``Truth`` object."""
+        return Truth.con(Truth(float(other), clip=True), self)
+
+    def __matmul__(self, other: Truth) -> Truth:
+        """Overloads the binary ``@`` (matrix product) operator."""
+        return Truth.xor(self, Truth(float(other), clip=True))
+
+    def __rmatmul__(self, other: Truth) -> Truth:
+        """Ensures that the overloading of ``@`` works as long as one operand is a ``Truth`` object."""
+        return Truth.xor(Truth(float(other), clip=True), self)
+
+    def __floordiv__(self, other: Union[Truth | float]) -> Truth:
+        """Overloads the binary ``^`` (bitwise xor) operator with :meth`.weight`.
+
+        Arg:
+            other: a ``float`` presumed to be on the range [-100,100], or a Truth scaled to this.
+            See the note under :meth`.weight`.
+
+        Returns:
+            A weighted version of ``self``.
+        """
+        if isinstance(other, Truth):
+            other = other.to_float(range=(-100, 100))
+        return Truth.weight(self, other)
+
+    def __rfloordiv__(self, other: float) -> Truth:
+        """Ensures that the overloading of ``^`` works as long as one operand is a ``Truth`` object."""
+        # This gets sent to the magic method version to deal with the truth scaling.
+        s = self.to_float(range=(-100, 100)) if isinstance(self, Truth) else self
+        return Truth.weight(Truth(float(other), clip=True), s)
+
+    def __xor__(self, other: Union[Truth | float]) -> Truth:
+        """Overloads the binary ``^`` (bitwise xor) operator with :meth`.focus`.
+
+        Arg:
+            other: a ``float`` presumed to be on the range [-100,100], or a Truth scaled to this.
+            See the note under :meth`.focus`.
+
+        Returns:
+            A weighted version of ``self``.
+        """
+        if isinstance(other, Truth):
+            other = other.to_float(range=(-100, 100))
+        return Truth.weight(self, other)
+
+    def __rxor__(self, other: float) -> Truth:
+        """Ensures that the overloading of ``^`` works as long as one operand is a ``Truth`` object."""
+        # This gets sent to the magic method version to deal with the truth scaling.
+        if isinstance(self, Truth):
+            self = self.to_float(range=(-100, 100))
+        return Truth.weight(Truth(float(other), clip=True), self)
 
     # abstract methods:  _get_domain, _get_numerical, t.  Can I do anything here?
 
@@ -380,7 +569,8 @@ class LogicOperator(Operator, ABC):
             r.cv = np.append(r.cv, r.cv[-1] + approx_res_right)
             r.ct = np.empty_like(r.cv)
             r.ct = op(a._sample(r.cv, interp), b._sample(r.cv, interp))
-        r.cn = len(r.cv)
+        r.cn = 0 if r.cv is None else len(r.cv)
+        r.e = op(a.e, b.e)
         return r
 
     def _associative_logic_op(self, precision: int, allowed_domain: Domain, n: Norm,
@@ -471,14 +661,18 @@ class UnaryOperator(Operator, ABC):
         a = self.operands[0]._get_numerical(precision, allowed_domain)  # a Numerical version of the operand
         if isinstance(self, LogicOperator):
             n = getattr(self, 'norm', default_norm)
-            a.ct, a.xt, a.e = self._op(n, a.ct), self._op(n, a.xt), self._op(n, a.e)
+            a.ct = None if a.ct is None else self._op(n, a.ct)
+            a.xt = None if a.xt is None else self._op(n, a.xt)
+            a.e = self._op(n, a.e)
             return a
         if isinstance(self, Absolute):
             n = getattr(self, 'norm', default_norm)
             interp = getattr(self, 'interpolator', default_interpolator)
             return self._op(n, interp, a)
         if isinstance(self, MathOperator):
-            a.cd, a.cv, a.xv = self.d_op(False, a.cd), self._op(a.cv), self._op(a.xv)
+            a.cd = None if a.cd is None else self.d_op(False, a.cd)
+            a.cv = None if a.cv is None else self._op(a.cv)
+            a.xv = None if a.xv is None else self._op(a.xv)
             return a
 
     def t(self, v: Union[np.ndarray, float]) -> Union[np.ndarray, float]:
@@ -599,7 +793,10 @@ class BinaryOperator(Operator, ABC):
         Pycharm doesn't complain when l_op or m_op do the same thing.
 
         This works for the 8 binary logic ops, so I'll put it here.  The 2 binary math ops are different."""
-        return a.union(b)
+        if a is None:
+            return b
+        else:
+            return a.union(b)
 
     def t(self, v: Union[np.ndarray, float]) -> Union[np.ndarray, float]:
         """This should do it for all binary functions"""
@@ -689,8 +886,6 @@ class AssociativeOperator(Operator, ABC):
         super().__init__(*operands, **kwargs)
 
     def __str__(self):
-        a = self.operands[0].__str__()
-        b = self.operands[1].__str__()
         top = str(f"\n {self.name} together the following: [\n")
         for i, a in enumerate(self.operands):
             top = top + str(f"{i}:  ") + a.__str__() + str(f"\n")
@@ -726,11 +921,11 @@ class AssociativeOperator(Operator, ABC):
             t = np.array(t)
             return self._op(n, t)
         if isinstance(self, MathOperator):  # TODO
-            n = getattr(self, 'norm', default_norm)
+            norm = getattr(self, 'norm', default_norm)
             s, n = self.operands[0], len(operands)
             for i in range(1, n):
                 a = self.operands[i]
-                s = self._op(n, s, a)
+                s = self._op(norm, s, a)
             return s
 
     def _operate(self, precision: int, allowed_domain: Domain = None) -> _Numerical:
@@ -761,7 +956,6 @@ class Or(LogicOperator, AssociativeOperator):
 
     def _op(self, n: Norm, *operands: TruthOperand) -> TruthOperand:
         return n.or_(*operands)
-
 
 # AssociativeOperator:---  logic: and, or;  math:  add, mul
 # Qualifiers:  normalize, weight, focus

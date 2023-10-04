@@ -83,8 +83,8 @@ to state facts and opinions in fuzzy form.
 Ordinary crisp logic and ``bool`` describe truth with two possible values, the Boolean domain: {0,1}, for ``False``
 and ``True``.  Fuzzy logic and the :mod:`.fuzzy` package add to this the infinite possibilities of partial truths
 in-between, the fuzzy domain: [0,1].  A :class:`.Truth` object is initialized simply, with a statement
-like ``sincerity = Truth(.8)``.  Between the extremes of "yes" and "no" you can define what exactly what you mean
-as precisely "maybe" by setting the rare parameter :attr:`fuzzy.truth.default_threshold`.  I don't recommend
+like ``sincerity = Truth(.8)``.  Between the extremes of "yes" and "no" you can define "maybe" by setting the
+rare parameter :attr:`fuzzy.truth.default_threshold`.  I don't recommend
 changing the obvious default, .5, which allots equal space to the agreeable and the reluctant.
 
 Numbers are a much richer field for the imagination.  Familiar ``float`` objects represent the real numbers
@@ -93,6 +93,12 @@ number as being absolutely true for one value and absolutely false for all other
 represents a real number as a fuzzy truth assigned to every possible real value, i.e., as a function, :math:`t(v)`,
 of truth vs. value over all available floats---a function with range [0,1] and domain practically infinite.
 
+For example, we might describe room temperature as a symmetrical triangular function
+on (68, 76)°F or (20, 24)°C.  The certainty, strength, or likelihood of an input and our opinions about the
+desirability or "goodness" of an output can encoded in a single number.  Notice how the fuzzy
+number includes information about the ideal (the maximum), our tolerance for its variation (the width), and the limits
+of what we will accept (the *support*, or non-zero domain).  An arbitrary function can contain an enormous amount
+of detail.
 
 
 Built-in Literal Numbers
@@ -117,11 +123,10 @@ fuzzy numbers parametrically:
 
 They are subclasses of the abstract class :class:`.Literal`, which provides the apparatus for declaring the
 fuzzy number conveniently and precisely:  as a function of one real variable ("value") implemented as a Python
-method (:meth:`._sample`).  They include the option to restrict the domain further to a set of uniformly-spaced,
-discrete values, and to a set of explicit, discrete values.  This is useful if the solutions one seeks
-can only take certain values or must be integer multiples of some unit, e.g., if you need
-to reason about feeding your elephants, you may leave the oats continuous, but please, make sure your elephants
-are discrete.
+method (:meth:`.Literal._sample`).  They include the option to restrict the domain further to a set of
+uniformly-spaced, discrete values, and to a set of explicit, discrete values.  This is useful if the solutions one
+seeks can only take certain values or must be integer multiples of some unit, e.g., if you need to reason about
+feeding your elephants, you may leave the oats continuous, but please, make sure your elephants are discrete.
 
 The classes :class:`.Triangle` and :class:`.Trapezoid` are the piecewise linear functions one usually encounters in
 simpler fuzzy logic implementations.  (However, I like how they have constant variability over their linear segments,
@@ -152,11 +157,14 @@ most practical and interesting to use fuzzy numbers that represent real things--
 and relations among them.  This is done by using arbitrary, parameterized functions as fuzzy numbers.  The only
 requirement is that their range be restricted to [0,1].  For example: Is the sun shining?  It depends on the time of
 day, and, for a significant part of the day, a fuzzy answer is appropriate.
-Another:  sensory dissonance is a very predictable experience.  Usually, we are interested in its amount vs. the pitch
-interval between two tones.  That curve, scaled to [0,1], becomes a very useful fuzzy number if you want to tune a
-musical instrument.  Both examples may depend on many factors---custom-made fuzzy numbers may well depend on all
-sorts of other objects as parameters---but they may be boiled down to useful functions of one variable and used as
-fuzzy numbers in fuzzy reasoning.
+
+Another example:  sensory dissonance is a very predictable experience.  Usually, we are interested in its
+amount vs. the pitch interval between two tones.  That spiky, highly structured curve, scaled to [0,1], becomes a very
+useful fuzzy number if you want to tune a musical instrument.
+
+Both examples may depend on many factors---custom-made
+fuzzy numbers may well depend on all sorts of other objects as parameters---but they may be boiled down to useful
+functions of one variable and used as fuzzy numbers in fuzzy reasoning.
 
 No doubt you can think of many examples in whatever fields you have mastered.  To bring your knowledge into
 the :mod:`fuzzy` package, you simply subclass of one of the existing classes.  There are three good candidates:
@@ -201,7 +209,8 @@ Most of these are also available as the usual symbols (``&``, ``|``, ``+``, ``*`
 operator methods.  So, most fuzzy expressions you may write will look exactly the same as crisp expressions.  The
 :mod:`fuzzy` package though, adds more functionality:  a few new operators and the ability to perform logical
 operations on numbers.  First I'll describe the operators that work with :class:`.Truth` objects, then those that
-work with :class:`.FuzzyNumber` objects, including all kinds of :class:`.Literal`\\ s.
+work with :class:`.FuzzyNumber` objects, including all kinds of :class:`.Literal`\\ s.  Then, I'll describe the
+qualifiers, operators unique to fuzzy truths and numbers that alter their strength.
 
 Logical Operators
 -----------------
@@ -300,24 +309,27 @@ explicit settings.
 
 The unary operators are:
 
-    * :meth:`.Operator.not_`, for logical negation, as above.
-    * :meth:`.neg`, for arithmetic negation, :math:`-a`.
+    * :meth:`.Operator.not_`, for logical negation, as above, ¬a (``~a``).
+    * :meth:`.neg`, for arithmetic negation, :math:`-a` (``-a``).
     * :meth:`.reciprocal`, for :math:`1/a`.
-    * :meth:`.abs`, for absolute value, :math:`|a|`.
+    * :meth:`.abs`, for absolute value, :math:`|a|` (``+a``).
 
 The binary operators are:
 
     * The eight logical operators described
-      above--- :meth:`.Operator.imp`, :meth:`.Operator.con`, :meth:`.Operator.iff`, :meth:`.Operator.xor`,
-      :meth:`.Operator.nand`, :meth:`.Operator.nor`, :meth:`.Operator.nimp`, :meth:`.Operator.ncon`.
-    * :meth:`.sub`, for subtraction.
-    * :meth:`.div`, for division.
+      above--- :meth:`.Operator.imp` (``a >> b``), :meth:`.Operator.con` (``a << b``),
+      :meth:`.Operator.iff` (``~(a @ b)``), :meth:`.Operator.xor` (``a @ b``),
+      :meth:`.Operator.nand` (``~(a & b)``), :meth:`.Operator.nor` (``~(a | b)``),
+      :meth:`.Operator.nimp` (``~(a >> b)``), :meth:`.Operator.ncon` (``~(a << b)``).
+    * :meth:`.sub`, for subtraction (``a - b``).
+    * :meth:`.div`, for division (``a / b``).
 
 The associative operators are:
 
-    * The two logical operators described above: :meth:`.Operator.and_`, :meth:`.Operator.or_`
-    * :meth:`.add`, for addition.
-    * :meth:`.mul`, for multiplication.
+    * The two logical operators described above:
+      :meth:`.Operator.and_` (``a & b``), :meth:`.Operator.or_` (``a | b``)
+    * :meth:`.add`, for addition (``a + b``).
+    * :meth:`.mul`, for multiplication (``a * b``).
 
 What does it mean for logic to operate on numbers?  It means that the logical operator is applied "element-wise", to
 every value.  In binary operations, it is applied to every pair of like value defined by the operands (imagine
@@ -337,21 +349,23 @@ Qualifiers
 ----------
 
 Both :class:`.Truth`\\ s and :class:`.FuzzyNumber`\\ s can be qualified by methods that alter their strength in an
-expression.  Given an operand and a parameter on [-100, 100], they return a stronger or weaker version of the operand
+expression.  Given an operand and a parameter on [-100, 100], they return a weaker or stronger version of the operand
 that will have more or less influence in its expression.  The range of the parameter is conventional---it may be
 exceeded, but the results obtained at the extremes are probably as much as you would ever want to use.  In-between,
 the effect of changing the parameter is meant to be perceptually linear.
 
-:class:`.Truth` has only one type of qualifier: :meth:`.weight`.  Weight makes a truth more or less extreme.
+:class:`.Truth` has only one type of qualifier: :meth:`.weight` (``a // w``, where ``w`` is the parameter).
+Weight makes a truth more or less extreme.
 A positive parameter pulls truths away from the :attr:`truth.default_threshold` towards either 0 or 1.
 A negative parameter pulls them away from the extremes and towards the threshold.
 This effect is really a partial "crisping" of the truth, as we shall see below.
 
 :class:`.FuzzyNumber` has three types of qualifier:
 
-    * :meth:`.Operator.weight`, which is identical to the above, but applied to every truth in :math:`t(v)`;
-    * :meth:`.normalize`, which simply increases the range of truths to fill [0,1]; and,
-    * :meth:`.focus`.
+* :meth:`.Operator.weight` (``a // w``), which is identical to the above,
+  but applied to every truth in :math:`t(v)`;
+* :meth:`.normalize`, which simply increases the range of truths to fill [0,1]; and,
+* :meth:`.focus` (``a ^ f``, where ``f`` is the parameter).
 
 Focus makes the peaks sharper or broader (and the valleys correspondingly broader or sharper).
 A positive parameter pulls all truths but the highest down towards 0, making the peaks narrower---the number becomes
@@ -375,7 +389,7 @@ Crisp Results
     | It's not often easy, and not often kind.
     | Did you ever have to make up your mind?”
 
-    -- John Sebastian
+    -- John Sebastian, *Did You Ever Have to Make Up Your Mind?*
 
 What a joy it would be to remain in the fuzzy world and never decide, but sometimes we cannot resist the lure of
 ``bool`` and ``float`` objects, so we must derive them from our :class:`.Truth`\\ s and :class:`.FuzzyNumber`\\ s.
@@ -404,7 +418,7 @@ How does the fuzzy number come about?  How is it all calculated?  With difficult
 where you needn't worry about it.  There are, however, two important parameters used when calling for a calculation
 (i.e., when calling :meth:`.FuzzyNumber.crisp`) that you should set wisely:
 
-    * ``resolution``: the smallest difference in value that you consider accurate, an acceptable error-bound.
+    * ``resolution``: the largest discrepancy in result values that you would tolerate, an acceptable error-bound.
     * ``allowed_domain``: the range of values in which you are willing to receive a result.
 
 Internally, the package uses a fixed precision based on these parameters and the natural domain of the expression in
@@ -465,6 +479,9 @@ variable as a tree of relatively lightweight operators and literals.  For exampl
 
 Note that only the last two involve the relatively expensive construction of numerical representations.
 
+Make all the natural-language statements you can about a system, its problems and heuristics.  They are already
+very close to fuzzy statements, and are easily converted.  Your knowledge of a domain can quickly become a very
+sophisticated computer program automating your own judgment.
 
 
 Rare Parameters
@@ -539,15 +556,13 @@ curve.  Stricter norms tend to extreme values---**and** more false and **or** mo
    :alt: a gallery of strictness t-norms
 
    Strictness.  :meth:`.Truth.and_` is plotted for the parameterized strictness norm from -81 to 73.  Strictness
-   here is the percentage of the volume above the t-norm surface.  Some t-norms bulge along the diagonal where
-   a ≈ b.  Some exclude the false half of the unit square.  This is not captured by the strictness parameter.
-   The strictness norm I provide interpolates between the eight simple norms mentioned above.
+   here is the fraction of the volume above the t-norm surface, mapped onto the parameter range, [-100, 100].
+   Some t-norms bulge along the diagonal where a ≈ b.  Some exclude the false half of the unit square.  This is not
+   captured by the strictness parameter.  The strictness norm I provide interpolates between the eight simple norms
+   mentioned above.
 
+There are more exotic norms than these in the world.  They can wait.
 
-There are more exotic norms in the world.  Part of my algorithm for fuzzy binary math requires what I call
-"or-integrals".  Instead of summing an infinite number of infinitesimal numbers, they **or** together an infinite
-number of infinitesimal truths.  This can be done by adapting a co-norm with Riemann and geometric integrals.
-With more exotic norms, more exotic integrals will be required, and that can wait.
 
 *********************
 How the Package Works
@@ -609,7 +624,8 @@ evaluations of all operands, i.e., The truth of at any exceptional point in the 
 the truths at that value in all the operands, whether they come from :math:`D_p`, :math:`D_c`, or :math:`D_e`.
 
 Similarly, for every :math:`D_c` in the result, its samples are the result of operating on truths from
-the :math:`D_d  = D_c \\cup D_e` of every operand (using the :class:`.Literal._sample` method).
+the :math:`D_d  = D_c \\cup D_e` of every operand (using the :class:`.Literal._sample` method);  :math:`D_p` is not
+consulted because the points are *exceptions* to the continuous function.
 
 Finally,  the truth on :math:`D_e` of the result comes from operating on the :math:`t_e` of all the operands.
 
@@ -623,7 +639,7 @@ basic operators.
 
 
 In a binary operation, every element of of the first operand, :math:`a` should operate on every element
-of the second operand, :math:`b`, with the exception that elsewhere truths, which do not operate with
+of the second operand, :math:`b`, with the exception of elsewhere truths, which do not operate with
 any but their own kind.  The result of any operation with respect to element types is:
 
     * Two points: another point.
@@ -669,11 +685,11 @@ These will be **ored** together with the result of the following section.
 Between Two Functions
 ---------------------
 
-This is simply a continuous version of the discrete case, with two sets of points.  Here now, there are an infinte
+This is simply a continuous version of the discrete case, with two sets of points.  Here now, there are an infinite
 number of them, represented by sample arrays.
 
 Consider the :math:`D_c` of our operands, :math:`a` and :math:`b`.  To form a sum, let's say, we take
-every possible value in :math:`a` and :math:`b` that might come together to produce aresult, :math:`r`.
+every possible value in :math:`a` and :math:`b` that might come together to produce a result, :math:`r`.
 Picture them as the Cartesian product of :math:`a` and :math:`b`, a rectangular plane on which each point uniquely
 corresponds to one of the possible combinations.  The truth of that combination is the truth of *that* :math:`a`
 **and** the truth of *that* :math:`b`.  So, over the rectangular area of the Cartesian product, we have a
@@ -737,8 +753,8 @@ of a non-zero elsewhere?  I can think of two:
 The Or-integral
 ---------------
 
-I need something like an integral that, instead of summing an infinite number of infinitiessimals, **ors** together
-an infinite number of truths of infinitessimal significance.  The result cannot be less true than the truest point
+I need something like an integral that, instead of summing an infinite number of infinitesimals, **ors** together
+an infinite number of truths of infinitesimal significance.  The result cannot be less true than the truest point
 on the integrand.  If **or** is defined as :math:`\\max(a, b)`, it seems clear that this is simply
 
 .. math::
@@ -746,7 +762,7 @@ on the integrand.  If **or** is defined as :math:`\\max(a, b)`, it seems clear t
     \\lor_0^{\\ell}\\,t(x)\\, dx =\\, \\max\\left(t(x)\\right).
 
 For most norms, however, the truth increases any time two
-non-zero truths are **ored** together.  So, I expect an infinte number of non-zero norms to approach a truth of 1
+non-zero truths are **ored** together.  So, I expect an infinite number of non-zero norms to approach a truth of 1
 when **ored** together.  I think that the following definition of the or-integral for such norms will at least
 have the correct behavior at the limits:
 
@@ -754,7 +770,7 @@ have the correct behavior at the limits:
 
     \\lor_0^\\ell\\, t(x)\\, dx =\\, M - A + A/M
 
-and 0 if :math:`M=0`, where :math:`A = (1/\\ell) \\int_0^\\ell\, t(x)\\, dx`
+and 0 if :math:`M=0`, where :math:`A = (1/\\ell) \\int_0^\\ell\\, t(x)\\, dx`
 and :math:`M = \\max\\left(t(x)\\right)`---the average and maximum truths on :math:`[0, \\ell]`.
 The rate at which the result should approach 1 depends in part on the norm, but I don't know how to take
 that into account.  I may well be wrong about any part of this.
@@ -781,8 +797,8 @@ parameters, and can make new ones by defining a single Python method (:meth:`.Li
 
 They also use operators that overload convenient symbols, so that everything looks like crisp math with logic thrown in.
 These operators are methods of :class:`.Operator` that simply return instances of :class:`.Operator` subclasses,
-one for each type of operator. Though I don't expect it, the operators have been designed so that it should be almost
-as easy for users to create new ones as it is for them to create new :class:`.Literal`\\ s.
+one for each type of operator. Though I don't expect it to happen, the operators have been designed so that it should
+be almost as easy for users to create new ones as it is for them to create new :class:`.Literal`\\ s.
 
 Since an :class:`.Operator` represents a :class:`.FuzzyNumber` it *is a* :class:`.FuzzyNumber`.  It *has* within it
 its operands, which are also :class:`.FuzzyNumber`\\ s---:class:`.Literal`\\ s or :class:`.Operator`\\ s---so an

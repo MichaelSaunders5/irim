@@ -97,12 +97,14 @@ Caution:
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from collections import Iterable
+# from collections import Iterable
 from math import log
 from typing import Union, Tuple
 
 import numpy as np
+
 import fuzzy.norm
+
 # from fuzzy.norm import Norm, default_norm
 
 TruthOperand = Union[float, np.ndarray, int, bool, 'Truth']
@@ -124,6 +126,33 @@ def _prepare_norm(**kwargs) -> Norm:
         return kw
     else:
         return fuzzy.norm.Norm.define(**kw)
+
+
+def _promote_and_call(s, b, t_name, fn_name, flip):
+    if flip:
+        s, b = b, s
+    if not isinstance(b, Truth) and isinstance(b, (float, int, bool)):  # If it is a number...
+        b = float(b)
+        if (b >= 0) and (b <= 1):  # and on [0,1], make it a Truth
+            b = Truth(b)
+        else:
+            from fuzzy.literal import Exactly  # but if it's outside [0,1], make it a FuzzyNumber: Exactly
+            b = Exactly(b)
+            from fuzzy.literal import Truthy
+            s = Truthy(s)
+    if flip:
+        s, b = b, s
+    if isinstance(s, Truth) and isinstance(b, Truth):
+        return eval("Truth." + t_name + "(s, b)")  # Call the operator for Truths
+    else:
+        from fuzzy.number import FuzzyNumber
+        if not isinstance(s, FuzzyNumber):
+            from fuzzy.literal import Truthy
+            s = Truthy(s)
+        print(f"We are: {s, b}")
+        from fuzzy.operator import Operator
+        return eval("Operator." + fn_name + "(s, b)")  # Call the operator for FuzzyNumbers
+
 
 @dataclass
 class Truth(float):
@@ -279,6 +308,8 @@ class Truth(float):
             A :class:`Truth` object, with value on [0,1].
         """
         self.s = Truth.scale(x, "in", range, map, clip)
+        if not Truth.is_valid(self):
+            raise ValueError(f"A truth must be on [0,1]. {self.s} is invalid.")
 
     def to_float(self, range: Tuple[float, float] = (0, 1), map: str = "lin", clip: bool = False) -> float:
         """Map ``self``'s value from [0,1] to a given range.
@@ -394,8 +425,6 @@ class Truth(float):
             (to which any number are true)."""
         norm = _prepare_norm(**kwargs)
         return norm.or_(self, *other)
-
-
 
     def imp(self, other: TruthOperand, **kwargs) -> Truth:
         """The material implication ("imply", →) binary operator [1101], the converse of :meth:`con`.
@@ -647,11 +676,12 @@ class Truth(float):
 
     def __rshift__(self, other: Truth) -> Truth:
         """Overloads the binary ``>>`` (bitwise right shift) operator."""
-        return Truth.imp(self, Truth(float(other), clip=True))
+        return _promote_and_call(self, other, "imp", "__rshift__", False)
 
     def __rrshift__(self, other: Truth) -> Truth:
         """Ensures that the overloading of ``>>`` works as long as one operand is a ``Truth`` object."""
-        return Truth.imp(Truth(float(other), clip=True), self)
+        # return Truth.imp(Truth(float(other), clip=True), self)
+        return _promote_and_call(other, self, "imp", "__rshift__", True)
 
     def __lshift__(self, other: Truth) -> Truth:
         """Overloads the binary ``<<`` (bitwise left shift) operator."""
@@ -669,7 +699,7 @@ class Truth(float):
         """Ensures that the overloading of ``@`` works as long as one operand is a ``Truth`` object."""
         return Truth.xor(Truth(float(other), clip=True), self)
 
-    def __xor__(self, other: Union[Truth | float]) -> Truth:
+    def __floordiv__(self, other: Union[Truth | float]) -> Truth:
         """Overloads the binary ``^`` (bitwise xor) operator with :meth`.weight`.
 
         Arg:
@@ -683,12 +713,11 @@ class Truth(float):
             other = other.to_float(range=(-100, 100))
         return Truth.weight(self, other)
 
-    def __rxor__(self, other: float) -> Truth:
+    def __rfloordiv__(self, other: float) -> Truth:
         """Ensures that the overloading of ``^`` works as long as one operand is a ``Truth`` object."""
         # This gets sent to the magic method version to deal with the truth scaling.
-        if isinstance(self, Truth):
-            self = self.to_float(range=(-100, 100))
-        return Truth.weight(Truth(float(other), clip=True), self)
+        s = self.to_float(range=(-100, 100)) if isinstance(self, Truth) else self
+        return Truth.weight(Truth(float(other), clip=True), s)
 
     # a trivial point:
 

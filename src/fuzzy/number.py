@@ -711,7 +711,7 @@ class _Numerical(FuzzyNumber):  # user doesn't see it!  dataclass?
         a = isinstance(v, np.ndarray)
         v = np.atleast_1d(v)
         if self.cd is None:
-            t = np.full_like(v, self.e)
+            t = np.full_like(v, self.e, dtype=float)
         else:
             if interp is None:
                 interp = default_interpolator
