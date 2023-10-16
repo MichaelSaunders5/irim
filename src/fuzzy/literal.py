@@ -155,7 +155,7 @@ class Literal(Operator):  # user only implements _sample
 
                 """
         # domain-related:
-        super().__init__(kwargs.get('elsewhere', 0))
+        super().__init__([], **kwargs)
         domain = kwargs.get('domain', None)  # Where _sample is defined, even if cd will be None due to discretization
         self.d = None if domain is None else Domain(domain) if isinstance(domain, tuple) else domain
         # If None, subclasses must supply a default
@@ -851,24 +851,27 @@ class Exactly(DPoints):
         return str(f"Exactly {self.xv[0]}")
 
 
-class Truthy(_Numerical):
+class Truthy(Literal):
     """A fuzzy number equivalent to a Truth.
 
     This enables :class:`.Truth` to be used in fuzzy calculations.  (Fuzzy logic operators conveniently promote
     number operands to :class:`.Truthy` objects.)
     """
 
-    def __init__(self, t: Union[Truth, float, int, bool]) -> None:
+    def __init__(self, t: Union[Truth, float, int, bool], **kwargs) -> None:
         """
         Args:
             t:  The truth for all values.
             """
         if not Truth.is_valid(Truth(t)):
             raise ValueError("A truth must be on [0,1]")
-        t = float(t)
-        super().__init__(None, 0, None, None, None, None, t)
-
+        super().__init__(**kwargs)
+        self.e = float(t)
 
     def __str__(self):
         # s = super().__str__()
         return str(f"Truthy: truth = {self.e} everywhere.")
+
+    def _sample(self, v: np.ndarray) -> np.ndarray:
+        """Returns the truth for every value in ``v``."""
+        return np.full_like(v, self.e)

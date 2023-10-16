@@ -55,9 +55,9 @@ objects with some added functionality.
 
 from __future__ import annotations
 
-from collections import Iterable
 from abc import ABC, abstractmethod
-from math import exp, floor, ceil
+from collections import Iterable
+from math import floor, ceil, exp, log
 from typing import Union, Callable
 
 import numpy as np
@@ -212,8 +212,6 @@ class Norm(ABC):
             * In the first case: a single :class:`numpy.ndarray`, if any were input, or else a single fit---the
               result of all the iterable's elements operated together.
             * In the second case: a single fit---the result of all the array's elements operated together."""
-        if isinstance(operands[0], np.ndarray) and len(operands) == 1:
-            item = operands[0]
         if isinstance(operands[0], Iterable) and len(operands) == 1:
             item = operands[0]
         else:
@@ -264,6 +262,7 @@ class Norm(ABC):
     def _or(self, a: Operand, b: Operand) -> Operand:
         """A private definition of fuzzy logic *binary* OR, to be implemented by :mod:`Numpy`."""
 
+    # I used to think the following:
     # I'll also define And- and Or-integrals (like and-ing or or-ing every point of a function together).
     # I only need the _or_integral for fuzzy arithmetic, but I'm defining the _and_integral for completeness.
     # many of these implementations will require:
@@ -276,23 +275,34 @@ class Norm(ABC):
     # (I'm doing this because later, for fuzzy arithmetic operators, I'll need to take fuzzy Or-integrals over lines
     # (describing an operator) on the t-norm (fuzzy *and*) of a Cartesian product of two fuzzy values (the operands).)
 
-    @abstractmethod
-    def _and_integral(self, z: np.ndarray, line_length: float) -> float:
-        """A private definition of fuzzy logic AND-integral.
-
-        Args:
-            z: an array of suitabilities (on [0,1]) vs. uniformly-spaced values
-            line_length: arclength of the line over which the definite integral is to be taken,
-                in units of sample intervals of the Cartesian product."""
-
-    @abstractmethod
     def _or_integral(self, z: np.ndarray, line_length: float) -> float:
-        """A private definition of fuzzy logic OR-integral.
+        """The usual fuzzy logic OR-integral.
+
+        I need something like an integral that, instead of summing an infinite number of infinitesimals,
+        **ors** together an infinite number of truths of infinitesimal significance.  The result cannot be less true
+        than the truest point on the integrand.  If **or** is defined as :math:`\\max(a, b)`, it seems clear that this
+        is simply the maximum of the integrand.  For most norms, however, the truth increases any time two non-zero
+        truths are **ored** together.  So, I expect the result of **oring** of  an infinite number of non-zero norms
+        to approach 1.  I think that, for such norms, the definition of the or-integral I use here will at least have
+        the correct behavior at the limits.
+
+        This isn't perfect.  The rate at which the result should approach 1 depends in part on the norm,
+        but I don't know how to take that into account.  I may well be wrong about any part of this.
 
         Args:
             z: an array of suitabilities (on [0,1]) vs. uniformly-spaced values
             line_length: arclength of the line over which the definite integral is to be taken,
-                in units of sample intervals of the Cartesian product."""
+                in units of sample intervals of the Cartesian product. [how about unitless?]"""
+        m = np.max(z)
+        if m == 0:
+            return 0
+        if line_length == 0:
+            a = z[len(z) // 2]
+        else:
+            a = np.sum(z) / len(z)    # np.trapz(z) / line_length
+            # s = np.trapz(z) / len(z)  # the definite (Riemann) line integral
+            # p = exp(np.trapz(np.log(z))) / len(z)          # the definite geometric (product) line integral
+        return self.or_(m, a)  # m - a + a / m        # m    m + a - a * m    ##s-p    # m - a + a * m
 
 
 # Here I'll implement the simple Norms from least to most strict (strong and, weak or to the reverse):
@@ -322,11 +332,9 @@ class Lax(Norm):
         d = a * np.equal(b, 1)
         return np.clip(c + d, 0, 1)
 
-    def _and_integral(self, z: np.ndarray, line_length: float) -> float:
-        return np.amax(z) if np.amin(z) == 0 else 1
-
-    def _or_integral(self, z: np.ndarray, line_length: float) -> float:
-        return np.amin(z) if np.amax(z) == 1 else 0
+    # The or-integral would be non-one only for horizontal or vertical lines along the far edges---(1, b) or (a, 1),
+    # which none of the four operators do.  Maybe I should overload _or_integral to always return 1.
+    # Or maybe the bit of residue the parent method catches will matter.
 
 
 class MinMax(Norm):
@@ -341,10 +349,8 @@ class MinMax(Norm):
     def _or(self, a: Operand, b: Operand) -> np.ndarray:
         return np.fmax(a, b)
 
-    def _and_integral(self, z: np.ndarray, line_length: float) -> float:
-        return np.amin(z)
-
     def _or_integral(self, z: np.ndarray, line_length: float) -> float:
+        # Equivalent to the standard, but a bit faster.
         return np.amax(z)
 
 
@@ -357,24 +363,14 @@ class Hamacher(Norm):
     def _and(self, a: Operand, b: Operand) -> np.ndarray:
         # equivalent:  return 0 if a == b == 0 else a * b / (a + b - a * b)  # Could get +inf near a==b==0?
         with np.errstate(divide='ignore', invalid='ignore'):
-            c = a * b / (a + b - a * b)
+            c = np.divide(a * b, a + b - a * b)
         return np.nan_to_num(c, nan=0.0, posinf=1.0, neginf=0.0)
 
     def _or(self, a: Operand, b: Operand) -> np.ndarray:
         # equivalent:  return 1 if a == b == 1 else (a + b - 2 * a * b) / (1 - a * b)
         with np.errstate(divide='ignore', invalid='ignore'):
-            c = (a + b - 2 * a * b) / (1 - a * b)
+            c = np.divide(a + b - 2 * a * b, 1 - a * b)
         return np.nan_to_num(c, nan=1.0, posinf=1.0, neginf=0.0)
-
-    def _and_integral(self, z: np.ndarray, line_length: float) -> float:
-        s = np.trapz(z) / line_length
-        p = exp(np.trapz(np.log(z))) / line_length
-        return 0 if s == p else (p / (s - p))
-
-    def _or_integral(self, z: np.ndarray, line_length: float) -> float:
-        s = np.trapz(z) / line_length
-        p = exp(np.trapz(np.log(z))) / line_length
-        return s / (1 + p)
 
 
 class Prod(Norm):
@@ -389,15 +385,6 @@ class Prod(Norm):
     def _or(self, a: Operand, b: Operand) -> np.ndarray:
         return a + b - a * b
 
-    def _and_integral(self, z: np.ndarray, line_length: float) -> float:
-        p = exp(np.trapz(np.log(z)))  # definite geometric (product) integral
-        return p / line_length
-
-    def _or_integral(self, z: np.ndarray, line_length: float) -> float:
-        s = np.trapz(z)
-        p = exp(np.trapz(np.log(z)))
-        return (s - p) / line_length
-
 
 class Einstein(Norm):
     """Defines the Einstein (``ee``) norm pair."""
@@ -410,16 +397,6 @@ class Einstein(Norm):
 
     def _or(self, a: Operand, b: Operand) -> np.ndarray:
         return (a + b) / (1 + a * b)
-
-    def _and_integral(self, z: np.ndarray, line_length: float) -> float:
-        s = np.trapz(z) / line_length
-        p = exp(np.trapz(np.log(z))) / line_length
-        return p / (p - s + 2)
-
-    def _or_integral(self, z: np.ndarray, line_length: float) -> float:
-        s = np.trapz(z) / line_length
-        p = exp(np.trapz(np.log(z))) / line_length
-        return s / (1 + p)
 
 
 class Nilpotent(Norm):
@@ -437,13 +414,7 @@ class Nilpotent(Norm):
         mask = ((a + b) < 1)
         return np.fmax(a, b) * mask + np.logical_not(mask)
 
-    def _and_integral(self, z: np.ndarray, line_length: float) -> float:
-        s = np.trapz(z) / line_length
-        return np.amin(z) if s > 1 else 0
-
-    def _or_integral(self, z: np.ndarray, line_length: float) -> float:
-        s = np.trapz(z) / line_length
-        return np.amax(z) if s < 1 else 1
+    # This or-integral may be different from the standard, but I'm not very sure.
 
 
 class Lukasiewicz(Norm):
@@ -462,13 +433,7 @@ class Lukasiewicz(Norm):
         c = a + b
         return np.clip(c, 0, 1)
 
-    def _and_integral(self, z: np.ndarray, line_length: float) -> float:
-        s = np.trapz(z) / line_length
-        return max(0, s - 1)
-
-    def _or_integral(self, z: np.ndarray, line_length: float) -> float:
-        s = np.trapz(z) / line_length
-        return min(s, 1)
+    # This or-integral may be different from the standard, but I'm not very sure.
 
 
 class Drastic(Norm):
@@ -489,11 +454,10 @@ class Drastic(Norm):
         r = np.where((a != 0) & (b != 0), np.ones_like(a), c)
         return r
 
-    def _and_integral(self, z: np.ndarray, line_length: float) -> float:
-        return np.amin(z) if np.amax(z) == 1 else 0
-
-    def _or_integral(self, z: np.ndarray, line_length: float) -> float:
-        return np.amax(z) if np.amin(z) == 0 else 1
+    # The or-integral would be non-zero only for horizontal or vertical lines along the far edges---(1, b) or (a, 1),
+    # which only division does for r=0 or inf (and maybe multiplication for r=0?).
+    # Maybe I should overload _or_integral to always return 0.
+    # But I think maybe the bit of residue the parent method catches will matter.
 
 
 # So far I have two parameterized types: Hamacher and a general strictness norm.
@@ -538,16 +502,6 @@ class ParameterizedHamacher(Norm):
         c = (a + b + (self._p - 2) * a * b) / (1 + (self._p - 1) * a * b)
         return np.nan_to_num(c, nan=1.0, posinf=1.0, neginf=0.0)
 
-    def _and_integral(self, z: np.ndarray, line_length: float) -> float:
-        s = np.trapz(z) / line_length
-        p = exp(np.trapz(np.log(z))) / line_length
-        return 0 if self._p == s == 0 else p / (self._p + (1 - self._p) * (s - p))
-
-    def _or_integral(self, z: np.ndarray, line_length: float) -> float:
-        s = np.trapz(z) / line_length
-        p = exp(np.trapz(np.log(z))) / line_length
-        return (s + (self._p - 2) * p) / (1 + (self._p - 1) * p)
-
 
 class CompoundNorm(Norm):
     """Defines a linear combination of two other norms according to a weight on [0,100].
@@ -575,9 +529,6 @@ class CompoundNorm(Norm):
 
     def _or(self, a: Operand, b: Operand) -> np.ndarray:
         return self._combination(self._n1.or_(a, b), self._n2.or_(a, b))
-
-    def _and_integral(self, z: np.ndarray, line_length: float) -> float:
-        return self._combination(self._n1._and_integral(z, line_length), self._n2._and_integral(z, line_length))
 
     def _or_integral(self, z: np.ndarray, line_length: float) -> float:
         return self._combination(self._n1._or_integral(z, line_length), self._n2._or_integral(z, line_length))

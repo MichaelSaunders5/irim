@@ -824,7 +824,10 @@ Users never have to make this call directly.  It happens internally only when it
 when :meth:`.FuzzyNumber.crisp`, ``float()``, or :meth:`.display` are called.  Calls to :meth:`.FuzzyNumber.t`
 and :meth:`.FuzzyNumber.map` (and to the resulting :class:`.Map` callable object) are all performed non-numerically,
 relying ultimately on defining methods of :class:`.Literal`\\ s and individual floating-point operations,
-without the need for the elaborate sampling and calculation required to create a :class:`._Numerical`.
+without the need for the elaborate sampling and calculation required to create a :class:`._Numerical`.  (I also
+provide an analogous method, :meth:`.FuzzyNumber.numerical_map` which creates a :class:`.NumericalMap` callable object
+that *does* store the expression numerically---to accommodate any odd cases where this may be more efficient in terms
+of speed or memory.)
 
 
 Resolution, Fixed-precision, and Domain Restriction
@@ -859,4 +862,3 @@ focused only on the regions where it will matter.
 
 """
 __all__ = ["norm", "truth", "number", "literal", "operator", "crisp"]
-# 291.4 9/3

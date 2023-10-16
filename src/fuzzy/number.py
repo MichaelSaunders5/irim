@@ -247,7 +247,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 from screeninfo import get_monitors
 
-from fuzzy.crisp import Crisper, MedMax, Interpolator, Map
+from fuzzy.crisp import Crisper, MedMax, Interpolator, Map, NumericalMap
 from fuzzy.truth import Truth, TruthOperand, default_threshold
 
 monitor_w, monitor_h = 1920, 1080  # When the module loads, find the monitor dimensions, for use by :meth:`.display`.
@@ -545,9 +545,7 @@ class FuzzyNumber(ABC):
         """Returns the crisp float value, via :meth:`.FuzzyNumber.crisp`, using only default parameters."""
         return self.crisp(default_resolution)
 
-    def map(self, resolution: float, allowed_domain: Tuple[float, float] = None,
-            range: Tuple[float, float] = (0, 1), map: str = "lin",
-            interp: Interpolator = None) -> Map:
+    def map(self, range: Tuple[float, float] = (0, 1), map: str = "lin") -> Map:
         """Creates a callable object that maps the :math:`t(v)` of ``self`` to the real numbers.
 
         A :class:`.FuzzyNumber` is a function of truth vs. value.  Sometimes that function is itself a useful result.
@@ -558,10 +556,45 @@ class FuzzyNumber(ABC):
         allow you to translate this to ``range`` via a ``map`` (linear, logarithmic, or exponential).  This should
         make the result more easily adaptable.
 
+        This method returns a callable object that stores the expression as a tree of operators and literals.
+        The :meth:`.numerical_map` method is similar, but stores the expression as a :class:`._Numerical`.
+        This one is more accurate, the other may be more efficient for some complex expressions.
+
+    Args:
+        range:  Translates the range of the internal function to the indicated range.  See :meth:`.Truth.scale`.
+        map:  And does so via linear, logarithmic, or exponential mapping.  See :meth:`.Truth.scale`.
+
+    Returns:
+        A callable object that can be used as a mathematical function.
+
+    Example:
+        | ``loudness = amplitude_vs_pitch.map(range=(0,96), map = "log"")``
+        | ``y = loudness(pitch)``
+        """
+        return Map(self, range, map)
+
+
+    def numerical_map(self, resolution: float, allowed_domain: Tuple[float, float] = None,
+            range: Tuple[float, float] = (0, 1), map: str = "lin",
+            interp: Interpolator = None) -> Map:
+        """Creates a callable object that maps the :math:`t(v)` of ``self`` to the real numbers.
+
+        A :class:`.FuzzyNumber` is a function of truth vs. value.  Sometimes that function is itself a useful result.
+        It can be used in crisp mathematical expressions via the callable :class:`.NumericalMap` object returned by
+        this method.
+
+        The range of the internal function is restricted to [0,1].  To make it more convenient, the parameters
+        allow you to translate this to ``range`` via a ``map`` (linear, logarithmic, or exponential).  This should
+        make the result more easily adaptable.
+
+        This method returns a callable object that stores the expression as a :class:`._Numerical`.
+        The :meth:`.map` method is similar, but stores the expression as a tree of operators and literals.
+        The other is more accurate, but this may be more efficient for some complex expressions.
+
     Args:
         resolution: The distance between sample values in the numerical representation.
-            This controls how accurately the :class:`.Map` represents the original (a smaller resolution is better).
-            Explicitly defined exceptional points are unaffected by resolution.
+            This controls how accurately the :class:`.NumericalMap` represents the original
+            (a smaller resolution is better).  Explicitly defined exceptional points are unaffected by resolution.
         allowed_domain:  Restricts the defined domain of the result to no more than this parameter, i.e., discarding
             any exceptional points or continuous domain outside it---these will return the default "elsewhere" truth.
         range:  Translates the range of the internal function to the indicated range.  See :meth:`.Truth.scale`.
@@ -577,7 +610,7 @@ class FuzzyNumber(ABC):
         | ``y = loudness(pitch)``
         """
         numerical = self._expression_as_numerical(resolution, allowed_domain)
-        return Map(numerical, range, map, interp)
+        return NumericalMap(numerical, range, map, interp)
 
     def display(self, resolution: float = None, domain: Domain = None, display_percentage: float = 25) -> None:
         # TODO: Needs work
@@ -605,6 +638,8 @@ class FuzzyNumber(ABC):
             c_domain = x_domain if c_domain is None else c_domain
             x_domain = c_domain if x_domain is None else x_domain
             domain = Domain((0, 0)) if ((c_domain is None) and (x_domain is None)) else c_domain.union(x_domain)
+        if domain[0] == domain[1]:
+            domain = Domain((domain[0]-.5, domain[0]+.5))
         # plt.rcParams["figure.figsize"] = [7.50, 3.50]
         plt.rcParams["figure.autolayout"] = True
         plt.xlim(*domain)  # domain to plot

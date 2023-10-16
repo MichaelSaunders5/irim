@@ -1,30 +1,63 @@
 # Here is where I am testing or playing around or something.
 # from fuzzy.operator import *
-import numpy as np
+
+from numpy import *
 
 from fuzzy.literal import *
-from fuzzy.truth import *
 from fuzzy.operator import *
-from numpy import *
-import math
-import matplotlib.pyplot as plt
-from  matplotlib.colors import LinearSegmentedColormap
 
 # fuzzy_ctrl(norm={'n1':"str", 'n1p':[-80], 'n2':"hhp", 'n2p':[20], 'cnp':70})
-fuzzy_ctrl(norm={'n1':"pp", 'n1p':[-60]})
-# fuzzy_ctrl_show()
+fuzzy_ctrl(norm={'n1': "pp"})
+fuzzy_ctrl_show()
 
 # t = Triangle(-.9,0.1,1.1, elsewhere=0, points=[(2, .8)])
 a = Triangle(0, 4, 8, elsewhere=0)
-b = Triangle(2, 6, 10, elsewhere=0)
+# b = Triangle(2, 6, 10, elsewhere=0)
+# a = Truthy(.5)
+
 # a = Trapezoid(0, 2, 4, 6, elsewhere=0, points=[(3, .2), (8, 1)])
-# b = Trapezoid(2, 4, 6, 8, elsewhere=0, points=[(3, .2), (2.5, .5)])  #, points=[(0,.5), (1,.5), (2,.5), (3,.5), (4,.5), (5,.5), (6,.5), (7,.5), (8,.5), (9,.5)]
+# b = Trapezoid(2, 4, 6, 8, elsewhere=0, points=[(3, .2), (2.5, .5)])  #, points=[(0,.5),
+# (1,.5), (2,.5), (3,.5), (4,.5), (5,.5), (6,.5), (7,.5), (8,.5), (9,.5)]
 # c = Trapezoid(4, 6, 8, 10, elsewhere=0)
 # a = Bell(4, 3, 1)
 # b = Bell(8, 3, 1)
 
+c = a + a
+# c = a.add(a, norm={'n1': "lb"})
+# c = Operator.add(a, a, norm={'n1': "lb"})
+c.display(.1)
 
-# print(a)
+
+
+# development of r.xv, r.xt method:
+# axv = np.array([1, 2, 3])
+# bxv = np.array([1, 2, 3])
+# axt = np.array([.1, .2, .3])
+# bxt = np.array([.4, .5, .6])
+# x, y = np.meshgrid(axv, bxv)
+# print(f"x, y:  {x}, {y}\n\n")
+# xabv = x + y
+# x, y = np.meshgrid(axt, bxt)
+# n = getattr(fuzzy.norm, "default_norm") #
+# xabt = np.ndarray.flatten(n.and_(x, y))
+# xv,i = np.unique(xabv, return_inverse=True)
+# rlen = len(xv)        # np.max(i) + 1
+# xt =  np.ndarray((rlen,))
+#
+# print(f"xabv = {xabv}")
+# print(f"xabt = {xabt}")
+# print(f"i = {i}")
+# print(f"rlen = {rlen}")
+# for j in range(0, rlen):
+#     k = np.atleast_1d(np.where(i==j))[0]
+#     print(f"j={j}, -- {k} -- truths -- {xabt[k]}")
+#     xt[j] = n.or_(xabt[k])
+# print(f"xv = {xv}")
+# print(f"xt = {xt}")
+#
+#
+
+# The following test different operator calls, especially operand promotion
 # x = 4
 # instance_call = a.imp(b)
 # class_call = Operator.imp(a, b)
@@ -33,58 +66,57 @@ b = Triangle(2, 6, 10, elsewhere=0)
 # print(f"a, b: {a.t(x)}, {b.t(x)}")
 # print(f"instance, class, symbol: {instance_call.t(x)}, {class_call.t(x)}, {symbol_call.t(x)}")
 # n * n == Python math.  imp is ~a|b, so .3>>.5 = .85 correct!  .5>>.3 = .65  backwards!
-x, y = 3, 5
-xir, yir = .3, .5   # number in [0,1] range
-Tx, Ty = Truth(.3), Truth(.5)
-
-# print(f"\nT * T\n Tx >> Ty: {Tx >> Ty}")                    # T * T
-# print(f"\nnir * T\n xir >> Ty: {xir >> Ty}")                     # nir * T
-# print(f"\nT * nir\n Tx >> yir: {Tx >> yir}")                     # T * nir
+# x, y = 3, 5
+# xir, yir = .3, .5   # number in [0,1] range
+# Tx, Ty = Truth(.3), Truth(.5)
 #
-# print(f"\nn * T\n x >> Ty: {x >> Ty}")                     # n * T
-# d = x >> Ty
+# print(f"\nT * T\n Tx & Ty: {~(Tx & Ty)}")                    # T * T
+# print(f"\nnir * T\n xir & Ty: {~(xir & Ty)}")                     # nir * T
+# print(f"\nT * nir\n Tx & yir: {~(Tx & yir)}")                     # T * nir
+#
+# print(f"\nn * T\n x & Ty: {~(x & Ty)}")                     # n * T
+# d = ~(x & Ty)
 # d.display()
 # print(d.t(0))
-# print(f"\nT * n\n Tx >> y: {Tx >> y}")                     # T * n
-# d = Tx >> y
+# print(f"\nT * n\n Tx & y: {~(Tx & y)}")                     # T * n
+# d = ~(Tx & y)
 # d.display()
 # print(d.t(0))
-
-# print(f"\nT * F\n Tx >> a: {Tx >> a}")                       # T * F
-# d = Tx >> a      # x >> 1 = 1
+#
+# print(f"\nT * F\n Tx & a: {~(Tx & a)}")                       # T * F
+# d = ~(Tx & a)      # x & 1 = 1
 # d.display()
 # print(d.t(20))
 #
-# print(f"\nF * T\n a >> Ty: {a >> Ty}")                       # F * T
-# d = a >> Ty      # 1 >> .5 = .5, .5>>.5= .75
+# print(f"\nF * T\n a & Ty: {~(a & Ty)}")                       # F * T
+# d = ~(a & Ty)      # 1 & .5 = .5, .5&.5= .75
 # d.display()
 # print(d.t(20))
-# #
-# print(f"\nF * F\n a >> b: {a >> b}")                                       # F * F
-# d = a >> b
+#
+# print(f"\nF * F\n a & b: {~(a & b)}")                                       # F * F
+# d = ~(a & b)
 # d.display()
 # print(d.t(20))
-
-print(f"\nF * nir\n a >> y: {a >> yir}")                                     # F * nir
-d = a >> yir
-d.display()
-print(d.t(20))
-
-print(f"\nnir * F\n x >> a: {xir >> a}")                                     # nir * F
-d = xir >> a
-d.display()
-print(d.t(20))
-
-print(f"\nF * n\n a >> y: {a >> y}")                                     # F * n
-d = a >> y
-d.display()
-print(d.t(20))
-
-print(f"\nn * F\n x >> a: {x >> a}")                                     # n * F
-d = x >> a
-d.display()
-print(d.t(20))
-
+#
+# print(f"\nF * nir\n a & y: {~(a & yir)}")                                     # F * nir
+# d = ~(a & yir)
+# d.display()
+# print(d.t(20))
+#
+# print(f"\nnir * F\n x & a: {~(xir & a)}")                                     # nir * F
+# d = ~(xir & a)
+# d.display()
+# print(d.t(20))
+#
+# print(f"\nF * n\n a & y: {~(a & y)}")                                     # F * n
+# d = ~(a & y)
+# d.display()
+# print(d.t(20))
+#
+# print(f"\nn * F\n x & a: {~(x & a)}")                                     # n * F
+# d = ~(x & a)
+# d.display()
+# print(d.t(20))
 
 
 # a.display()
@@ -103,7 +135,8 @@ print(d.t(20))
 # t = Nor(a, b)
 # t = Nimp(a, b)
 # c = Ncon(a, b)
-# t = And(a, b, c, norm={'n1':"str", 'n1p':[-80], 'n2':"hhp", 'n2p':[20], 'cnp':70})    #, norm={'n1':"str", 'n1p':[-80], 'n2':"hhp", 'n2p':[20], 'cnp':70})
+# t = And(a, b, c, norm={'n1':"str", 'n1p':[-80], 'n2':"hhp", 'n2p':[20], 'cnp':70})
+# #, norm={'n1':"str", 'n1p':[-80], 'n2':"hhp", 'n2p':[20], 'cnp':70})
 # t = Or(a, b, c)
 
 # print(t)
@@ -347,8 +380,7 @@ print(d.t(20))
 #     ax[3, 2].set_title('a.xor(b),      a @ b')
 #
 #     plt.show()
-#
-#
+
 # def display_logic_ops() -> None:    # This generates logic_heatmaps_prod.png
 #     px = 1 / plt.rcParams['figure.dpi']  # pixel in inches
 #     plt.rcParams['figure.figsize'] = [px*800, px*800/1.24245436]
@@ -531,5 +563,3 @@ print(d.t(20))
 #
 #
 # display_norms()
-
-

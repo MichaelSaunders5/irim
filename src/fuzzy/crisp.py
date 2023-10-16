@@ -20,6 +20,7 @@ from scipy.interpolate import CubicSpline, barycentric_interpolate, \
 from fuzzy.truth import Truth
 
 
+
 class Interpolator:
     """Performs interpolations for arrays of points.
 
@@ -113,33 +114,99 @@ class Interpolator:
 class Map:
     """A callable object: a function mapping a fuzzy number's suitability onto real numbers.
 
-    # TODO: re-write this to hold an expression as a FuzzyNumber instead of a _Numerical and to take arrays
-    # Well, a raw expression is more accurate, but is it more efficient than a numerical?  It depends, but I
-    # think it usually is.  Maybe it can be an option of .map.
+    The :class:`.NumericalMap` provides the same functionality, is less accurate, but may be more efficient, depending
+    on the complexity of the expression.
 
     The most familiar way of using a fuzzy number is to "defuzzify" it to obtain a single, definite, crisp number.
-    That is accomplished by the :meth:`.Value.crisp` method.  Another way is to use a function to map its
-    suitability onto the crisp numbers.  I.e., a fuzzy number (a :class:`Value` object) is :math:`s(v)`,
-    a :class:`Map` object (obtainable from the :class:`Value` by the :meth:`.map` method) is :math:`f(v) = g(s(v))`.
+    That is accomplished by the :meth:`.FuzzyNumber.crisp` method.  Another way is to use a function to map its
+    truth onto the crisp numbers.  I.e., a :class:`.FuzzyNumber` object is :math:`t(v)`,
+    a :class:`Map` object (obtainable from the :class:`FuzzyNumber` by the :meth:`.map` method)
+    is :math:`f(v) = g(t(v))`.
 
     I can't provide every possible :math:`g(x)`, but this is a good start:  a simple scaling onto a given ``range``,
-    linearly, or with the option to invert a log mapping by ``exponential=True``.  This function-as-an-object
-    with a :meth:`.Map.get` method can be used in whatever expressions you need.  I.e., since, internally, a fuzzy
+    linearly, or with the option to invert a log mapping by ``exponential=True``.  This function-as-a-callable-object
+    can be used in whatever expressions you need.  I.e., since, internally, a fuzzy
     number *is* a function, it is sometimes useful to use it *as* a function.
 
     Consider the utility of an input variable that has been mapped onto [0,1], modified by fuzzy work, and then
-    reconstituted into its input units by a :class:`Map`.  Consider also the possibility of a variable conceived
-    in relative units, within the fuzzy world, as a :class:`.Value`, then reified into practical units
-    by a :class:`Map`.
+    reconstituted into its input units by a :class:`Map`.  Consider also the possibility of a variable
+    conceived in relative units, within the fuzzy world, as a :class:`.FuzzyNumber`, then reified into practical
+    units by a :class:`Map`.
 
     Example:
-        | my_map = my_value.map(range=(-100,100), exponential = False, resolution = .001, interp = "cubic")
+        | my_map = my_value.map(range=(-100,100), map = "lin")
+        | y = my_map(x)
+    """
+
+    def __init__(self, expression: 'Operator', range: Tuple[float, float], map: str = "lin"):
+        """I expect that the constructor will only ever be called by the :meth:`.FuzzyNumber.map` method.
+
+        Args:
+
+            expression:  The operator at the root of a tree of :class:`.Operator`\\ s and :class:`.Literal`\\ s
+                that describe a fuzzy number as an expression.
+
+        Other Parameters:
+            range, map:  relate to mapping fuzzy units.  See :meth:`.Truth.scale`."""
+        self.expression = expression
+        self.range = range
+        self.map = map
+
+    def __str__(self):
+        if self.map == "exp" or "invlog":
+            map = "exponatially"
+        elif self.map == "log" or "invexp":
+            map = "logarithmically"
+        else:
+            map = "linearly"
+        return str(f"a callable object {map} mapping to {self.range} the suitability "
+                   f"of the following fuzzy number:\n {self.expression}")
+
+    def __call__(self, x: Union[np.ndarray, float]) -> Union[np.ndarray, float]:
+        """Performs function mapped from the :math:`t(v)` of a fuzzy number.
+
+        The fuzzy number used and details of the mapping are determined when the :class:`Map`
+        object was created by :meth:`.FuzzyNumber.map`.
+
+        Args:
+            x: The independent variable (any float or an array of them).
+
+        Returns:
+            The dependent variable (a float or an array of them, corresponding to ``x``).
+        """
+        return  Truth.scale(self.expression.t(x), "out", self.range, self.map)
+
+
+class NumericalMap:
+    """A callable object: a function mapping a fuzzy number's suitability onto real numbers.
+
+    A raw expression (as used by :class:`.Map`) is more accurate, but this type may be more efficient, depending
+    on the complexity of the expression.
+
+    The most familiar way of using a fuzzy number is to "defuzzify" it to obtain a single, definite, crisp number.
+    That is accomplished by the :meth:`.FuzzyNumber.crisp` method.  Another way is to use a function to map its
+    truth onto the crisp numbers.  I.e., a :class:`.FuzzyNumber` object is :math:`t(v)`,
+    a :class:`NumericalMap` object (obtainable from the :class:`FuzzyNumber` by the :meth:`.numerical_map` method)
+    is :math:`f(v) = g(t(v))`.
+
+    I can't provide every possible :math:`g(x)`, but this is a good start:  a simple scaling onto a given ``range``,
+    linearly, or with the option to invert a log mapping by ``exponential=True``.  This function-as-a-callable-object
+    can be used in whatever expressions you need.  I.e., since, internally, a fuzzy
+    number *is* a function, it is sometimes useful to use it *as* a function.
+
+    Consider the utility of an input variable that has been mapped onto [0,1], modified by fuzzy work, and then
+    reconstituted into its input units by a :class:`NumericalMap`.  Consider also the possibility of a variable
+    conceived in relative units, within the fuzzy world, as a :class:`.FuzzyNumber`, then reified into practical
+    units by a :class:`NumericalMap`.
+
+    Example:
+        | my_map = my_value.numerical_map(range=(-100,100), map = "lin", resolution = .001, interp = "cubic")
         | y = my_map(x)
     """
 
     def __init__(self, numerical: 'Numerical', range: Tuple[float, float], map: str = "lin",
                  interp: Interpolator = None):
-        """I expect that the constructor will only ever be called by the :meth:`.Value.map` method.
+        """I expect that the constructor will only ever be called by the :meth:`.FuzzyNumber.numerical_map` method.
 
         Args:
 
@@ -152,11 +219,12 @@ class Map:
         self.range = range
         self.map = map
         if interp is None:
+            from fuzzy.number import default_interpolator
             self.interp = default_interpolator
         else:
             self.interp = interp
         # I think only linear interpolation never strays from the valid range:
-        if self.interp.parameters['type'] == "linear":
+        if self.interp.kind == "linear":
             self.clip = False
         else:
             self.clip = True
@@ -169,22 +237,22 @@ class Map:
         else:
             map = "linearly"
         n = self.numerical.__str__()
-        return str(f"a callable object {map} mapping to {self.range} the suitability "
+        return str(f"a callable object {map} mapping to {self.range} the truth "
                    f"of the following fuzzy number:\n {n}")
 
-    def __call__(self, x: float) -> float:
-        """Performs function mapped from the :math:`s(v)` of a fuzzy number.
+    def __call__(self, x: Union[np.ndarray, float]) -> Union[np.ndarray, float]:
+        """Performs function mapped from the :math:`t(v)` of a fuzzy number.
 
-        The fuzzy number used and details of the mapping are determined when the :class:`Map` object was created
-        by :meth:`.Value.map`.
+        The fuzzy number used and details of the mapping are determined when the :class:`NumericalMap`
+        object was created by :meth:`.FuzzyNumber.numerical_map`.
 
         Args:
-            x: The independent variable.
+            x: The independent variable (any float or an array of them).
 
         Returns:
-            The dependent variable.
+            The dependent variable (a float or an array of them, corresponding to ``x``).
         """
-        return Truth(self.numerical.suitability(x, self.interp)).to_float(self.range, self.map, self.clip)
+        return  Truth.scale(self.numerical.t(x, self.interp), "out", self.range, self.map, self.clip)
 
 
 class Crisper(ABC):

@@ -27,14 +27,14 @@ The class provides many methods and overloaded operators for working with logic:
 * The other eight non-trivial logical connectives familiar from propositional calculus and electronic logic
   gates:
 
-    * :meth:`.imp` (→, "implies", ``>>``) [1101],
-    * :meth:`.con` (←, *converse*, ``<<``) [1011],
-    * :meth:`.iff` (↔, *equivalence*, "if and only if", "xnor", ``~(a @ b)``) [1001], and its inverse---
-    * :meth:`.xor` (⨁, *exclusive or*, ``@``) [0110]; and the other inverses:
-    * :meth:`.nand` (↑, non-conjunction, ``~(a & b)``) [1110],
-    * :meth:`.nor` (↓, non-disjunction, ``~(a | b)``) [1000],
-    * :meth:`.nimp` (:math:`\\nrightarrow`, non-implication, ``~(a >> b)``) [0010], and
-    * :meth:`.ncon` (:math:`\\nleftarrow`, non-converse implication, ``~(a << b)``) [0100].
+    * :meth:`.Truth.imp` (→, "implies", ``>>``) [1101],
+    * :meth:`.Truth.con` (←, *converse*, ``<<``) [1011],
+    * :meth:`.Truth.iff` (↔, *equivalence*, "if and only if", "xnor", ``~(a @ b)``) [1001], and its inverse---
+    * :meth:`.Truth.xor` (⨁, *exclusive or*, ``@``) [0110]; and the other inverses:
+    * :meth:`.Truth.nand` (↑, non-conjunction, ``~(a & b)``) [1110],
+    * :meth:`.Truth.nor` (↓, non-disjunction, ``~(a | b)``) [1000],
+    * :meth:`.Truth.nimp` (:math:`\\nrightarrow`, non-implication, ``~(a >> b)``) [0010], and
+    * :meth:`.Truth.ncon` (:math:`\\nleftarrow`, non-converse implication, ``~(a << b)``) [0100].
 
   All eleven logical connective methods can be defined by a :class:`Norm` optionally given in the call;
   otherwise, they use the :attr:`fuzzy.norm.default_norm` by default.
@@ -82,8 +82,8 @@ Caution:
     * The :meth:`Truth.and_` and :meth:`Truth.or_` methods may take zero or more arguments, because they are
       associative (although their overloaded operators, ``&`` and ``|``, are strictly binary).
       The other binary methods must take exactly one argument or an error will result.
-      Yes, :meth:`.iff` and :meth:`.xor` are mathematically associative, but, in these cases, "a * b * c" is
-      too easily mistaken for the more desirable "(a * b) ∧ (b * c)" or "(a * b) * (b * c)",
+      Yes, :meth:`.Truth.iff` and :meth:`.Truth.xor` are mathematically associative, but, in these
+      cases, "a * b * c" is too easily mistaken for the more desirable "(a * b) ∧ (b * c)" or "(a * b) * (b * c)",
       none of which are equivalent, so their programmatic associativity is disallowed to avoid confusion.
     * The precedence and associativity (in the programming sense) of the overloaded operators is
       inherited from Python, cannot be changed, and is slightly different from tradition, which is usually:
@@ -128,30 +128,60 @@ def _prepare_norm(**kwargs) -> Norm:
         return fuzzy.norm.Norm.define(**kw)
 
 
-def _promote_and_call(s, b, t_name, fn_name, flip):
-    if flip:
-        s, b = b, s
-    if not isinstance(b, Truth) and isinstance(b, (float, int, bool)):  # If it is a number...
-        b = float(b)
-        if (b >= 0) and (b <= 1):  # and on [0,1], make it a Truth
-            b = Truth(b)
+def _promote_and_call(a, b, t_name: str, fn_name: str):
+    """Appropriately promote the operand types and call the operator.
+
+    This exists so that we may use :class:`.Truth`, :class:`.FuzzyNumber`, and built-in Python numerical types
+    (``float``, ``int``, ``bool``) interchangeably in overloaded fuzzy expressions without worrying too much about it.
+    An analogous function exists in :mod:`operator`, to deal with :class:`.FuzzyNumber` operations.
+
+    Here, in :mod:`truth`, the operators are all logical and one operand must be :class:`.Truth`, or we would not have
+    arrived at this function (e.g., an operation on two ``float`s would be handled by Python in the usual way).
+
+    * If the other operand is also a :class`.Truth`, we simply call the class's method for the correct operation.
+    * If it is a number on [0,1], we upgrade it to  a :class`.Truth`, and make the same call.
+    * In all other cases, both operands must be upgraded to :class:`.FuzzyNumber`\\ s, and called as if it were
+      written that way, i.e., referred to this method's analogue in :mod:`operator`.
+
+      * If it (the non-Truth operand) is a number outside [0,1], it becomes an :class:`.Exactly` fuzzy number.
+      * If it is a :class:`.FuzzyNumber`, it remains as it is.
+      * In either case, the other operand (of type :class:`.Truth`), is passed on as-is, to be dealt with by
+        :meth:`.operator._promote_and_call`.
+
+    It is an added complication that we can't predict which of the two operands, if either, will require promotion,
+    so this must be remembered.  Not all operands are commutative, so the order of a and b must be preserved.
+
+    Args:
+        a, b: operands which may be :class`.Truth`, :class`.FuzzyNumber`, ``float``, ``int``, or ``bool``.
+        t_name: in a string, the name of the method for the :class`.Truth` operator, e.g., ``imp``.
+        fn_name: in a string, the name of the overloaded magic method for the operator symbol.  It will be called in
+            :mod:`operator` and end up in :meth:`.operator._promote_and_call`.
+
+    Returns:
+        A :class`.Truth`, or :class`.FuzzyNumber` that is the result of the indicated operation on ``a`` and ``b``.
+        """
+    a_truth, b_truth = isinstance(a, Truth), isinstance(b, Truth)
+    if a_truth and b_truth:
+        return eval("Truth." + t_name + "(a, b)")  # Call the operator for Truths
+    a_num = (not a_truth) and isinstance(a, (float, int, bool))
+    b_num = (not b_truth) and isinstance(b, (float, int, bool))
+    if a_num or b_num:
+        if a_num:
+            a_prom, p = True, float(a)
         else:
-            from fuzzy.literal import Exactly  # but if it's outside [0,1], make it a FuzzyNumber: Exactly
-            b = Exactly(b)
-            from fuzzy.literal import Truthy
-            s = Truthy(s)
-    if flip:
-        s, b = b, s
-    if isinstance(s, Truth) and isinstance(b, Truth):
-        return eval("Truth." + t_name + "(s, b)")  # Call the operator for Truths
+            a_prom, p = False, float(b)
+        if (p >= 0) and (p <= 1):
+            p = Truth(p)
+        else:
+            from fuzzy.literal import Exactly
+            p = Exactly(p)  # make it a FuzzyNumber: Exactly
+        a = p if a_prom else a
+        b = p if not a_prom else b
+    if isinstance(a, Truth) and isinstance(b, Truth):
+        return eval("Truth." + t_name + "(a, b)")
     else:
-        from fuzzy.number import FuzzyNumber
-        if not isinstance(s, FuzzyNumber):
-            from fuzzy.literal import Truthy
-            s = Truthy(s)
-        print(f"We are: {s, b}")
         from fuzzy.operator import Operator
-        return eval("Operator." + fn_name + "(s, b)")  # Call the operator for FuzzyNumbers
+        return eval("Operator." + fn_name + "(a, b)")  # Call the operator for FuzzyNumbers
 
 
 @dataclass
@@ -352,7 +382,7 @@ class Truth(float):
     # One unary operator (ignoring insistence (11), denial (00), and proposition (01))
     # ---we only need "¬", negation (10), accessed via: "s.not_()" or "~s".
 
-    def not_(self, **kwargs) -> Truth:
+    def not_(self, **kwargs) -> Union[Truth, np.ndarray]:
         """The negation ("not", ¬) unary operator [10].
 
         The truth of such expressions as, "``self`` is not so".
@@ -366,7 +396,9 @@ class Truth(float):
         # This will probably always be the standard fuzzy negation: 1 - self.s, but I refer to the norm
         # for consistency, and in case one chooses to implement non-standard negations.
         norm = _prepare_norm(**kwargs)
-        return norm.not_(self)
+        r = norm.not_(self)
+        r = Truth(r) if isinstance(r, float) else r
+        return r
 
     # Ten binary operators:---
     # ignoring:  tautology (1111), contradiction (0000);
@@ -393,7 +425,7 @@ class Truth(float):
     # First, the basic functions that provide the calculation via the `default_norm`:
     # and_, or_, imp_, con_, iff_, xor_;  nand_, nor_, nimp_, ncon_:
 
-    def and_(self, *other: TruthOperand, **kwargs) -> Truth:
+    def and_(self, *other: TruthOperand, **kwargs) -> Union[Truth, np.ndarray]:
         """The conjunction ("and", ∧) binary operator [0001].
 
         The truth of such expressions as, "both ``self`` and ``other``".  
@@ -401,15 +433,16 @@ class Truth(float):
 
         Args:
             other: zero or more :attr:`TruthOperand`, since the operation is associative.
-            norm: an optional norm.  The default is :attr:`Norm.default_norm`
 
         Returns:
             The conjunction of ``self`` and ``other``, the extent to which they are both true
             (to which all are simultaneously true)."""
         norm = _prepare_norm(**kwargs)
-        return norm.and_(self, *other)
+        r = norm.and_(self, *other)
+        r = Truth(r) if isinstance(r, float) else r
+        return r
 
-    def or_(self, *other: TruthOperand, **kwargs) -> Truth:
+    def or_(self, *other: TruthOperand, **kwargs) -> Union[Truth, np.ndarray]:
         """The disjunction ("inclusive or", ∨)
         binary operator [0111].
 
@@ -418,15 +451,16 @@ class Truth(float):
 
         Args:
             other: zero or more :attr:`TruthOperand`, since the operation is associative.
-            norm: an optional norm.  The default is :attr:`Norm.default_norm`
 
         Returns:
             The disjunction of ``self`` and ``other``, the extent to which either or both is true
             (to which any number are true)."""
         norm = _prepare_norm(**kwargs)
-        return norm.or_(self, *other)
+        r = norm.or_(self, *other)
+        r = Truth(r) if isinstance(r, float) else r
+        return r
 
-    def imp(self, other: TruthOperand, **kwargs) -> Truth:
+    def imp(self, other: TruthOperand, **kwargs) -> Union[Truth, np.ndarray]:
         """The material implication ("imply", →) binary operator [1101], the converse of :meth:`con`.
 
         The truth of such expressions as, "``self`` implies ``other``", or "if ``self`` then ``other``".  
@@ -434,14 +468,15 @@ class Truth(float):
 
         Args:
             other: one :attr:`TruthOperand`, since the operation is binary.
-            norm: an optional norm.  The default is :attr:`Norm.default_norm`
 
         Returns:
             The implication of ``self`` to ``other``, the extent to which ``self`` must result in ``other``."""
         norm = _prepare_norm(**kwargs)
-        return norm.or_(norm.not_(self), other)
+        r = norm.or_(norm.not_(self), other)
+        r = Truth(r) if isinstance(r, float) else r
+        return r
 
-    def con(self, other: TruthOperand, **kwargs) -> Truth:
+    def con(self, other: TruthOperand, **kwargs) -> Union[Truth, np.ndarray]:
         """The converse implication ("con", ←) binary operator [1011], the converse of :meth:`imp`.
 
         The truth of such expressions as, "``other`` implies ``self``", or "if ``other`` then ``self``".  
@@ -449,15 +484,16 @@ class Truth(float):
 
         Args:
             other: one :attr:`TruthOperand`, since the operation is binary.
-            norm: an optional norm.  The default is :attr:`Norm.default_norm`
 
         Returns:
             The implication of ``other`` to ``self``,
             the extent to which ``other`` must indicate that ``self`` was true."""
         norm = _prepare_norm(**kwargs)
-        return norm.or_(self, norm.not_(other))
+        r = norm.or_(self, norm.not_(other))
+        r = Truth(r) if isinstance(r, float) else r
+        return r
 
-    def iff(self, other: TruthOperand, **kwargs) -> Truth:
+    def iff(self, other: TruthOperand, **kwargs) -> Union[Truth, np.ndarray]:
         """The equivalence or "biconditional" ("iff", ↔) binary operator [1001], the inverse of :meth:`xor`.
 
         It is familiar in Mathematics as "if and only if" and in Electronics as "xnor"
@@ -468,15 +504,16 @@ class Truth(float):
 
         Args:
             other: one :attr:`TruthOperand`, since the operation is binary.
-            norm: an optional norm.  The default is :attr:`Norm.default_norm`
 
         Returns:
             The equivalence of ``self`` and ``other``, the extent to which they have the same degree of truth,
             the extent to which they occur together but not apart."""
         norm = _prepare_norm(**kwargs)
-        return norm.or_(norm.and_(self, other), norm.and_(norm.not_(self), norm.not_(other)))
+        r = norm.or_(norm.and_(self, other), norm.and_(norm.not_(self), norm.not_(other)))
+        r = Truth(r) if isinstance(r, float) else r
+        return r
 
-    def xor(self, other: TruthOperand, **kwargs) -> Truth:
+    def xor(self, other: TruthOperand, **kwargs) -> Union[Truth, np.ndarray]:
         """The non-equivalence or "exclusive disjunction" ("exclusive or", ⨁) binary operator [0110],
         the inverse of :meth:`iff`.
 
@@ -487,15 +524,16 @@ class Truth(float):
 
         Args:
             other: one :attr:`TruthOperand`, since the operation is binary.
-            norm: an optional norm.  The default is :attr:`Norm.default_norm`
 
         Returns:
             The non-equivalence of ``self`` and ``other``, the extent to which their degrees of truth differ,
             the extent to which they occur apart but not together."""
         norm = _prepare_norm(**kwargs)
-        return norm.and_(norm.or_(self, other), norm.not_(norm.and_(self, other)))
+        r = norm.and_(norm.or_(self, other), norm.not_(norm.and_(self, other)))
+        r = Truth(r) if isinstance(r, float) else r
+        return r
 
-    def nand(self, other: TruthOperand, **kwargs) -> Truth:
+    def nand(self, other: TruthOperand, **kwargs) -> Union[Truth, np.ndarray]:
         """The alternative denial ("nand", ↑) binary operator [1110], the inverse of :meth:`and_`.
 
         The truth of such expressions as, "``self`` and ``other`` cannot occur together".
@@ -503,14 +541,15 @@ class Truth(float):
 
         Args:
             other: one :attr:`TruthOperand`, since the operation is binary.
-            norm: an optional norm.  The default is :attr:`Norm.default_norm`
 
         Returns:
             The inverse conjunction of `self` and ``other``, the extent to which they are not both true."""
         norm = _prepare_norm(**kwargs)
-        return norm.not_(norm.and_(self, other))
+        r = norm.not_(norm.and_(self, other))
+        r = Truth(r) if isinstance(r, float) else r
+        return r
 
-    def nor(self, other: TruthOperand, **kwargs) -> Truth:
+    def nor(self, other: TruthOperand, **kwargs) -> Union[Truth, np.ndarray]:
         """The joint denial ("nor", ↓) binary operator [1000], the inverse of :meth:`or_`.
 
         The truth of such expressions as, "neither ``self`` nor ``other``".
@@ -518,14 +557,15 @@ class Truth(float):
 
         Args:
             other: one :attr:`TruthOperand`, since the operation is binary.
-            norm: an optional norm.  The default is :attr:`Norm.default_norm`
 
         Returns:
             The inverse disjunction of ``self`` and ``other``, the extent to which both are false."""
         norm = _prepare_norm(**kwargs)
-        return norm.not_(norm.or_(self, other))
+        r = norm.not_(norm.or_(self, other))
+        r = Truth(r) if isinstance(r, float) else r
+        return r
 
-    def nimp(self, other: TruthOperand, **kwargs) -> Truth:
+    def nimp(self, other: TruthOperand, **kwargs) -> Union[Truth, np.ndarray]:
         """The material nonimplication ("nimply", :math:`\\nrightarrow`) binary operator [0010],
         the inverse of :meth:`imp`.
 
@@ -535,15 +575,16 @@ class Truth(float):
 
         Args:
             other: one :attr:`TruthOperand`, since the operation is binary.
-            norm: an optional norm.  The default is :attr:`Norm.default_norm`
 
         Returns:
             The nonimplication of ``self`` to ``other``; the extent to which ``self`` suppresses or inhibits ``other``;
             the extent to which the presence of ``self`` indicates that ``other`` will not occur."""
         norm = _prepare_norm(**kwargs)
-        return norm.and_(self, norm.not_(other))
+        r = norm.and_(self, norm.not_(other))
+        r = Truth(r) if isinstance(r, float) else r
+        return r
 
-    def ncon(self, other: TruthOperand, **kwargs) -> Truth:
+    def ncon(self, other: TruthOperand, **kwargs) -> Union[Truth, np.ndarray]:
         """The converse non-implication ("ncon", :math:`\\nleftarrow`) binary operator [0100],
         the inverse of :meth:`con`.
 
@@ -552,13 +593,14 @@ class Truth(float):
 
         Args:
             other: one :attr:`TruthOperand`, since the operation is binary.
-            norm: an optional norm.  The default is :attr:`Norm.default_norm`
 
         Returns:
             The non-implication of ``other`` to ``self``,
             the extent to which ``other`` indicates that ``self`` was false."""
         norm = _prepare_norm(**kwargs)
-        return norm.and_(norm.not_(self), other)
+        r = norm.and_(norm.not_(self), other)
+        r = Truth(r) if isinstance(r, float) else r
+        return r
 
     # One more binary operator peculiar to fuzzy technique:  weight:
 
@@ -660,47 +702,47 @@ class Truth(float):
 
     def __and__(self, other: Truth) -> Truth:
         """Overloads the binary ``&`` (bitwise and) operator."""
-        return Truth.and_(self, Truth(float(other), clip=True))
+        return _promote_and_call(self, other, "and_", "__and__")
 
     def __rand__(self, other: Truth) -> Truth:
         """Ensures that the overloading of ``&`` works as long as one operand is a ``Truth`` object."""
-        return Truth.and_(Truth(float(other), clip=True), self)
+        return _promote_and_call(other, self, "and_", "__and__")
 
     def __or__(self, other: Truth) -> Truth:
         """Overloads the binary ``|`` (bitwise or) operator."""
-        return Truth.or_(self, Truth(float(other), clip=True))
+        return _promote_and_call(self, other, "or_", "__or__")
 
     def __ror__(self, other: Truth) -> Truth:
         """Ensures that the overloading of ``|`` works as long as one operand is a ``Truth`` object."""
-        return Truth.or_(Truth(float(other), clip=True), self)
+        return _promote_and_call(other, self, "or_", "__or__")
 
     def __rshift__(self, other: Truth) -> Truth:
         """Overloads the binary ``>>`` (bitwise right shift) operator."""
-        return _promote_and_call(self, other, "imp", "__rshift__", False)
+        return _promote_and_call(self, other, "imp", "__rshift__")
 
     def __rrshift__(self, other: Truth) -> Truth:
         """Ensures that the overloading of ``>>`` works as long as one operand is a ``Truth`` object."""
-        # return Truth.imp(Truth(float(other), clip=True), self)
-        return _promote_and_call(other, self, "imp", "__rshift__", True)
+        print(f"in here for {self}---{other}")
+        return _promote_and_call(other, self, "imp", "__rshift__")
 
     def __lshift__(self, other: Truth) -> Truth:
         """Overloads the binary ``<<`` (bitwise left shift) operator."""
-        return Truth.con(self, Truth(float(other), clip=True))
+        return _promote_and_call(self, other, "con", "__lshift__")
 
     def __rlshift__(self, other: Truth) -> Truth:
         """Ensures that the overloading of ``<<`` works as long as one operand is a ``Truth`` object."""
-        return Truth.con(Truth(float(other), clip=True), self)
+        return _promote_and_call(other, self, "con", "__lshift__")
 
     def __matmul__(self, other: Truth) -> Truth:
         """Overloads the binary ``@`` (matrix product) operator."""
-        return Truth.xor(self, Truth(float(other), clip=True))
+        return _promote_and_call(self, other, "xor", "__matmul__")
 
     def __rmatmul__(self, other: Truth) -> Truth:
         """Ensures that the overloading of ``@`` works as long as one operand is a ``Truth`` object."""
-        return Truth.xor(Truth(float(other), clip=True), self)
+        return _promote_and_call(other, self, "xor", "__matmul__")
 
     def __floordiv__(self, other: Union[Truth | float]) -> Truth:
-        """Overloads the binary ``^`` (bitwise xor) operator with :meth`.weight`.
+        """Overloads the binary ``//`` (floor division) operator with :meth`.weight`.
 
         Arg:
             other: a ``float`` presumed to be on the range [-100,100], or a Truth scaled to this.
@@ -714,10 +756,11 @@ class Truth(float):
         return Truth.weight(self, other)
 
     def __rfloordiv__(self, other: float) -> Truth:
-        """Ensures that the overloading of ``^`` works as long as one operand is a ``Truth`` object."""
+        """Ensures that the overloading of ``//`` works as long as one operand is a ``Truth`` object."""
         # This gets sent to the magic method version to deal with the truth scaling.
-        s = self.to_float(range=(-100, 100)) if isinstance(self, Truth) else self
-        return Truth.weight(Truth(float(other), clip=True), s)
+        # s = self.to_float(range=(-100, 100)) if isinstance(self, Truth) else self
+        # return Truth.weight(Truth(float(other), clip=True), s)
+        return __floordiv__(Truth(self), other)
 
     # a trivial point:
 
