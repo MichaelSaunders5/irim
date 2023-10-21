@@ -7,7 +7,7 @@ from fuzzy.literal import *
 from fuzzy.operator import *
 
 # fuzzy_ctrl(norm={'n1':"str", 'n1p':[-80], 'n2':"hhp", 'n2p':[20], 'cnp':70})
-fuzzy_ctrl(norm={'n1': "pp"})
+fuzzy_ctrl(norm={'n1': "ee"})
 fuzzy_ctrl_show()
 
 # t = Triangle(-.9,0.1,1.1, elsewhere=0, points=[(2, .8)])
@@ -22,7 +22,11 @@ a = Triangle(0, 4, 8, elsewhere=0)
 # a = Bell(4, 3, 1)
 # b = Bell(8, 3, 1)
 
-c = a + a
+a1 = Triangle(2, 3, 4)
+a2 = Triangle(4, 5, 6)
+b = a1 + a2
+c = b._expression_as_numerical(.01, allowed_domain=(7, 11))  #, allowed_domain=(35,65)
+print(f"if this is about the same as intended, we're okay: {c.cn}")
 # c = a.add(a, norm={'n1': "lb"})
 # c = Operator.add(a, a, norm={'n1': "lb"})
 c.display(.1)

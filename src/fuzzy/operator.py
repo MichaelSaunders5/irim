@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from math import pi, sqrt, floor  # ceil, pi, is finite, log
+from math import pi, sqrt, ceil, floor  # pi, is finite, log
 from sys import float_info
 from typing import Union, Tuple  # , ClassVar,
 
@@ -291,9 +291,11 @@ class Operator(FuzzyNumber, ABC):
         """operate on the operand over its consequential domain with the required precision.
         :class:`.UnaryOperator`, :class:`.BinaryOperator`, and :class:`.AssociativeOperator` must each implement
         :meth:`._operate(precision, allowed_domain)` to handle one, two , or many operands."""
-        if allowed_domain is not None:
-            allowed_domain = self.d_op(True, allowed_domain)  # Only sample where it matters.
-        return self._operate(precision, allowed_domain)
+        # if allowed_domain is not None:      # TODO this is not the place to impose domain  on binaries
+        #     allowed_domain = self.d_op(True, allowed_domain)  # Only sample where it matters.-------------
+        # iT LOOKS LIKE I've just renamed "_get_numerical" "_operate" in this neighborhood!
+        # Ah, at least this can be the one place I clean up the exceptional points with:
+        return _Numerical._impose_domain(self._operate(precision, allowed_domain), allowed_domain)
 
     @abstractmethod
     def _operate(self, precision: int, allowed_domain: Domain = None):  # -> _Numerical
@@ -374,6 +376,8 @@ class Operator(FuzzyNumber, ABC):
         operator not to sample where it won't matter to us, so it does ``d_op(a, True)`` to find that this means [-5,5].
         Its business is then on the intersection of that and what it has: [-5,5].intersection[0,10], so it only
         samples [0,5] of its operand to create the numerical it will return.
+
+        This idea only works for unary operators!  with binaries, the operands affect each other.
         """
 
     # Here is where all the operator functions used in expressions go:
@@ -892,13 +896,12 @@ class MathOperator(Operator, ABC):
     # form Cartesian product AND, calc lines, OR-integrate, resample?
 
     def _binary_math_op(self, n: Norm, sampling_method: str, interp: Interpolator,
-                        a: _Numerical, b: _Numerical) -> _Numerical:
-        """general service for binary logic operators"""  # TODO
+                        a: _Numerical, b: _Numerical, allowed_domain: Domain = None) -> _Numerical:
+        """general service for binary logic operators"""
 
         # self._op(x, y) is simply the arithmetic operator, needed to find the result's xv.
         # self.none_op(a.xv, b.xv, a.xt, b.xt) handles operands without xv, xt
         # self._line(n, t1, t2) describes result lines, but how to call it?
-
         r = _Numerical(self.d_op(False, a.cd, b.cd), 1, None, None, None, None, n.and_(a.e, b.e))  # The result to be built.
         # cn, cv, ct;   xv, xt need attention.  First xv, xt:
         use_r, xv, xt = self.none_op(a.xv, b.xv, a.xt, b.xt)    # self needs none_op to deal with empty sets...
@@ -932,11 +935,15 @@ class MathOperator(Operator, ABC):
         # Now to find the product of the operands' continuous functions:  cd, cn, cv, ct
         use_r, cv, ct = self.none_op(a.cv, b.cv, a.ct, b.ct)  # self needs none_op to deal with empty sets...
         if not use_r:  # If both operands have continuous parts:
-            x, y = np.meshgrid(a.ct, b.ct)  # every combination of truths, one from a, one from b
+            x, y = np.meshgrid(a.ct, b.ct, indexing = 'ij')  # every combination of truths, one from a, one from b
             cart = n.and_(x, y)  # a.truth & b.truth for each of those: AND of the Cartesian product.
             rgi = RegularGridInterpolator((a.cv, b.cv), cart, bounds_error=False, fill_value=0, method="cubic")
-            X, Y = np.meshgrid(a.cv, b.cv)
+            X, Y = np.meshgrid(a.cv, b.cv, indexing = 'ij')
             rv_all = np.unique(self._op(X, Y))   # Concentrates samples where there is structure.
+            if allowed_domain is not None:
+                r0 = np.argmax(rv_all >= allowed_domain[0]) - 1
+                r1 = np.argmax(rv_all > allowed_domain[1]) + 1
+                rv_all = rv_all[r0:r1]
             want = max(a.cn, b.cn)   # But this set must be decimated lest sample sets balloon.
             step = (len(rv_all)-1) / float(want - 1)
             indices = [int(round(x * step)) for x in range(want)]    # The decimation is as even as possible.
@@ -947,7 +954,7 @@ class MathOperator(Operator, ABC):
                 t_at_each_xy = Truth.clip(rgi((x, y)))
                 ct[i] = n._or_integral(t_at_each_xy, arclen)
         cn = 0 if cv is None else len(cv)
-        cd = self.d_op(False, a.cd, b.cd)
+        cd = self.d_op(False, a.cd, b.cd).intersection(allowed_domain)
         # Append that to x_c_products, or all the continuous functions together, and put them in the result.
         x_c_products.append(_Numerical(cd, cn, cv, ct, None, None))
         if x_c_products is not None:
@@ -974,14 +981,19 @@ class UnaryOperator(Operator, ABC):
         return a_d
 
     def _operate(self, precision: int, allowed_domain: Domain = None) -> _Numerical:
-        """Use the operator's d_op and l_op or m_op on the three parts of the operand's numerical form."""
-        a = self.operands[0]._get_numerical(precision, allowed_domain)  # a Numerical version of the operand
+        """Use the operator's _op on the three parts of the operand's numerical form."""
+
         if isinstance(self, LogicOperator):
+            a = self.operands[0]._get_numerical(precision, allowed_domain)
             n = getattr(self, 'norm', default_norm)
             a.ct = None if a.ct is None else self._op(n, a.ct)
             a.xt = None if a.xt is None else self._op(n, a.xt)
             a.e = self._op(n, a.e)
             return a
+        # It must be a math operator, for which domain restrictions are more complicated.
+        natural_domain = self.operands[0]._get_domain()
+        imposed_domain = self.d_op(True, allowed_domain).intersection(natural_domain)
+        a = self.operands[0]._get_numerical(precision, imposed_domain)
         if isinstance(self, Absolute):
             n = getattr(self, 'norm', default_norm)
             interp = getattr(self, 'interpolator', default_interpolator)
@@ -1129,12 +1141,17 @@ class BinaryOperator(Operator, ABC):
         n = getattr(self, 'norm', default_norm)
         sampling = getattr(self, 'sampling', default_sampling_method)
         interp = getattr(self, 'interpolator', default_interpolator)
-        a = self.operands[0]._get_numerical(precision, allowed_domain)  # a Numerical version of the a operand
-        b = self.operands[1]._get_numerical(precision, allowed_domain)  # a Numerical version of the b operand
         if isinstance(self, LogicOperator):
+            a = self.operands[0]._get_numerical(precision, allowed_domain)
+            b = self.operands[1]._get_numerical(precision, allowed_domain)
             return self._binary_logic_op(n, sampling, interp, a, b)  # does the partitioning and sampling behavior
         else:  # It's a MathOperator.
-            return self._binary_math_op(n, sampling, interp, a, b)
+            a_natural_domain = self.operands[0]._get_domain()
+            b_natural_domain = self.operands[1]._get_domain()
+            a_imposed_domain, b_imposed_domain = self.inv_d_op(allowed_domain, a_natural_domain, b_natural_domain)
+            a = self.operands[0]._get_numerical(precision, a_imposed_domain)
+            b = self.operands[1]._get_numerical(precision, b_imposed_domain)
+            return self._binary_math_op(n, sampling, interp, a, b) # TODO impose domain on a, b, r here?
 
 
 class Imp(LogicOperator, BinaryOperator):
@@ -1253,12 +1270,25 @@ class AssociativeOperator(Operator, ABC):
             return self._associative_logic_op(precision, allowed_domain, n, sampling, interp)
             # does the partitioning and sampling behavior
         else:  # It's a MathOperator---but this simple routine would work for logical associatives too:
+            # TODO re-rwrite this as a chain of binaries
+            # TODO this works, but go over it.
             number = len(self.operands)
-            s = self.operands[0]._get_numerical(precision, allowed_domain)
+            a = self.operands[0]
             for i in range(1, number):
-                a = self.operands[i]._get_numerical(precision, allowed_domain)
-                s = self._binary_math_op(n, sampling, interp, s, a)
-            return s
+                b = self.operands[i]
+                a_natural_domain = a._get_domain()
+                b_natural_domain = b._get_domain()
+                r_natural_domain = self.d_op(False, a_natural_domain, b_natural_domain)
+                allowed_domain = allowed_domain.intersection(r_natural_domain)
+                if allowed_domain is None:
+                    a_imposed_domain, b_imposed_domain = a_natural_domain, b_natural_domain
+                else:
+                    a_imposed_domain, b_imposed_domain = self.inv_d_op(allowed_domain, a_natural_domain, b_natural_domain)
+                a = a._get_numerical(precision, a_imposed_domain)
+                b = b._get_numerical(precision, b_imposed_domain)
+                a = self._binary_math_op(n, sampling, interp, a, b, allowed_domain)
+                a = _Numerical._impose_domain(a, allowed_domain)
+            return a
 
 
 class And(LogicOperator, AssociativeOperator):
@@ -1295,12 +1325,13 @@ class Add(MathOperator, AssociativeOperator):
         else:
             return Domain((a[0] + b[0], a[1] + b[1]))
 
-    def inv_d_op(self, r: Domain, a: Domain, b: Domain) -> (Domain, Domain):  # noqa
-        """The extreme domains of a and b that could lead to that of r."""
-        if (r is None) or (a is None) or (b is None):
-            return r
-        else:
-            return (Domain((r[0] - b[0], r[1] - b[1])), Domain((r[0] - a[0], r[1] - a[1])))
+    def inv_d_op(self, r: Domain, a: Domain, b: Domain) -> (Domain, Domain, float):  # noqa
+        """The extreme domains of a and b that could lead to that of r.
+        r is imposed, is in terms of this operator's result."""
+        # I know:  ai[0] + bi[0] = r[0], ai[1] + bi[1] = r[1]
+        ai = Domain((max(a[0], r[0] - b[1]), min(a[1], r[1] - b[0])))
+        bi = Domain((max(b[0], r[0] - a[1]), min(b[1], r[1] - a[0])))
+        return ai, bi
 
     def none_op(self, axv: np.ndarray, bxv: np.ndarray, axt: np.ndarray, bxt: np.ndarray) \
             -> Union[Tuple[bool, np.ndarray, np.ndarray],  Tuple[bool, None, None]]:

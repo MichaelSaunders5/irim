@@ -495,9 +495,11 @@ class FuzzyNumber(ABC):
         at the required ``resolution``.  It is used by :meth:`.FuzzyNumber.crisp`, :meth:`.map`. and :meth:`.display`.
         Its main task is to calculate the required precision from the given resolution and to make sure the resulting
         domain is properly restricted.  ``resolution`` must be > 0."""
+        if isinstance(allowed_domain, Tuple):
+            allowed_domain = Domain(allowed_domain)
         domain = self._get_domain()  # What the raw, unrestricted result would be.
         if allowed_domain is not None:
-            domain = Domain(allowed_domain).intersection(domain)  # What the restricted result will be...
+            domain = allowed_domain.intersection(domain)  # What the restricted result will be...
         span = None if domain is None else domain.span()  # ...for the precision calculation:
         if span is None:
             precision = 0  # continuous domain is excluded. exceptional points might exist
@@ -508,12 +510,12 @@ class FuzzyNumber(ABC):
                 precision = FuzzyNumber.maximum_precision
             else:
                 precision = ceil(span / resolution)  # number of sample points in each continuous part
-            precision = precision + 1 if (precision % 2) == 0 else precision  # Insist on odd precisions?
+            precision = precision + 1 if (precision % 2) == 0 else precision  # Insist on odd precisions.
         numerical = self._get_numerical(precision, allowed_domain)  # only seeks allowed domain
         if allowed_domain is not None:  # Impose an extreme domain, if required:
             numerical = _Numerical._impose_domain(numerical, allowed_domain)  # noqa Discard some exceptional points
             # ---has to be done separately because continuous was restricted (above) to its intersection with allowed.
-            # hmmm.  a parallel xp_domain could avoid keep track of it and avoid unnecessary calculation.
+            # hmmm.  a parallel xp_domain could keep track of it and avoid unnecessary calculation.
             # It might be more efficient, but it wouldn't affect precision.
         return numerical
 
@@ -728,6 +730,8 @@ class _Numerical(FuzzyNumber):  # user doesn't see it!  dataclass?
         the allowed_domain of the caller.  In other words, discarding (xv, xt) points makes sense, but resampling
         or discarding (cv, ct) points would lower the quality, and needn't be done anyway.  So, here we only
         touch (xv, xt)."""
+        if allowed_domain is None:
+            return num
         new_xv, new_xt = num.xv, num.xt
         if num.xv is not None:
             i = np.where((num.xv < allowed_domain[0]))
@@ -739,7 +743,8 @@ class _Numerical(FuzzyNumber):  # user doesn't see it!  dataclass?
                 new_xt = np.delete(new_xt, i)
             if len(new_xv) == 0:
                 new_xv = new_xt = None
-        return _Numerical(num.cd, num.cn, num.cv, num.ct, new_xv, new_xt, num.e)
+        actual_domain = allowed_domain.intersection(num.cd)
+        return _Numerical(actual_domain, num.cn, num.cv, num.ct, new_xv, new_xt, num.e)
 
     def _sample(self, v: Union[np.ndarray, float], interp: Interpolator = None) -> Union[np.ndarray, float]:
         """Returns the truth of given values, not considering exceptional points."""

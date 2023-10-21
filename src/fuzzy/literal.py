@@ -264,7 +264,7 @@ class Literal(Operator):  # user only implements _sample
                 ct[0] = 2 * ct[1] - ct[2]
             if not isfinite(ct[-1]):
                 ct[-1] = 2 * ct[-2] - ct[-3]
-        return _Numerical(cd, cn, cv, ct, xv, xt, self.e)
+        return _Numerical._impose_domain(_Numerical(cd, cn, cv, ct, xv, xt, self.e), allowed_domain)
 
     def t(self, v: Union[np.ndarray, float]) -> Union[np.ndarray, float]:
         """Returns the truth of given values."""
