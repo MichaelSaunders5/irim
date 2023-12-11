@@ -5,31 +5,66 @@ from numpy import *
 
 from fuzzy.literal import *
 from fuzzy.operator import *
+from math import log, exp
 
 # fuzzy_ctrl(norm={'n1':"str", 'n1p':[-80], 'n2':"hhp", 'n2p':[20], 'cnp':70})
-fuzzy_ctrl(norm={'n1': "ee"})
+fuzzy_ctrl(norm={'n1': "pp"})
 fuzzy_ctrl_show()
 
 # t = Triangle(-.9,0.1,1.1, elsewhere=0, points=[(2, .8)])
-a = Triangle(0, 4, 8, elsewhere=0)
-# b = Triangle(2, 6, 10, elsewhere=0)
-# a = Truthy(.5)
+# a = Triangle(0, 2, 4, elsewhere=0)
+b = Triangle(-2, 0, 2, elsewhere=0)
+a = Triangle(0, 2, 4, elsewhere=0)
 
-# a = Trapezoid(0, 2, 4, 6, elsewhere=0, points=[(3, .2), (8, 1)])
-# b = Trapezoid(2, 4, 6, 8, elsewhere=0, points=[(3, .2), (2.5, .5)])  #, points=[(0,.5),
+c = a * b
+d = b * a
+c.display()
+d.display()
+# 2*0: some ripples about 0, but 1 at 0.
+# 0*2: same ripples, but dramatic divot: .93 at 0
+
+# a = Trapezoid(-5, 4.9, 5.1, 6, elsewhere=0)      # , points=[(3, .2), (8, 1)]
+# a = Trapezoid(-.5, .49, .51, .6, elsewhere=0)      # , points=[(3, .2), (8, 1)]
+# a = Trapezoid(1, 1.49, 1.51, 2)      # , points=[(3, .2), (8, 1)]
+# a  = Trapezoid(2, 4, 6, 8, elsewhere=0, points=[(3, .2), (2.5, .5)])  #, points=[(0,.5),
 # (1,.5), (2,.5), (3,.5), (4,.5), (5,.5), (6,.5), (7,.5), (8,.5), (9,.5)]
 # c = Trapezoid(4, 6, 8, 10, elsewhere=0)
 # a = Bell(4, 3, 1)
 # b = Bell(8, 3, 1)
 
-a1 = Triangle(2, 3, 4)
-a2 = Triangle(4, 5, 6)
-b = a1 + a2
-c = b._expression_as_numerical(.01, allowed_domain=(7, 11))  #, allowed_domain=(35,65)
-print(f"if this is about the same as intended, we're okay: {c.cn}")
-# c = a.add(a, norm={'n1': "lb"})
-# c = Operator.add(a, a, norm={'n1': "lb"})
-c.display(.1)
+# n=5
+# xs=[-10,-.1]
+# x = xs[1] - np.exp(np.linspace(log(xs[1] - xs[0] + 1), 0, n)) + 1
+# x = xs[1] - np.exp(np.linspace(log1p(xs[1] - xs[0]), 0, n)) + 1
+#
+# print(x)
+
+# a1 = Triangle(.1, 2, 4 , points=[.5,.3])     # , points=[.5,.3]
+# a1 = Triangle(-1, 1, 3 , points=[.5,.3])     # , points=[.5,.3]
+# a1 = Triangle(-5, -3, -1)     # , points=[.5,.3]
+# a2 = Triangle(1, 3, 5)
+# d1 = DPoints([(1,.9), (2,.2)])
+# d2 = DPoints((2.5,.1))
+# d3 = DPoints([(1,.3), (2,.5)])
+# ex = Exactly(5)
+# tr = Truthy(.5)
+# b = a * a * a     # 1, .03;  3, .06|.05 = , 4, .1?
+# c = a + a + a
+# b = Operator.div(a, a)  #, allowed_domain=(35,65), allowed_domain=(-1,1), allowed_domain=(-.01,.01)
+# c = a + b
+# d = b + a
+
+# b = Operator.add(a, a, a)
+# print(c)
+# x = 0
+# print(f"b({x}): {b.t(x)}")
+# c = b._expression_as_numerical(.1)
+# print(f"c({x}): {c.t(x)}")
+# c = b._expression_as_numerical(.01)
+# print(f"c({x}): {c.t(x)}")
+# b.display() # -1, ~.1
+
+
 
 
 

@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from math import pi, sqrt, ceil, floor  # pi, is finite, log
+from math import pi, sqrt, floor, ceil, log1p  # pi, is finite, log
 from sys import float_info
 from typing import Union, Tuple  # , ClassVar,
 
@@ -23,6 +23,13 @@ MathOperand = Union[FuzzyNumber, float, int, bool]  # --> numbers get promoted t
 
 Operand = Union[LogicOperand, MathOperand]  # = LogicOperand.  Not really used, I think
 
+default_r_precision: int = 401
+"""Related to the maximum number of samples taken for the longest line on the Cartesian product when sampling it 
+for results of arithmetic operations.  Shorter lines have fewer samples; in some situations (proximity to zero) it will
+be boosted.  Some operators, by their nature, may require a multiple of it.  Fearing numerical pathologies, 
+I keep it odd.  If it is set too low, the continuous results of fuzzy operators may look noisy, but it has 
+a strong effect on the speed  of operations.  The above value looked good to me in testing."""
+
 
 def _handle_defaults(**kwargs) -> Tuple:
     """Used for setting obscure defaults, globally by :meth:`.fuzzy_ctrl` or in a calculation or on
@@ -32,6 +39,7 @@ def _handle_defaults(**kwargs) -> Tuple:
         norm = Norm.define(**norm_args)
     else:
         norm = getattr(fuzzy.norm, 'default_norm')
+    r_precision = kwargs.get('r_precision', None)  # int > 3
     threshold = kwargs.get('threshold', None)  # float on [0,1]
     sampling = kwargs.get('sampling', None)  # str: either "Chebyshev" or "uniform"
     interpolator = kwargs.get('interpolator', None)  # Interpolator
@@ -39,7 +47,7 @@ def _handle_defaults(**kwargs) -> Tuple:
     resolution = kwargs.get('resolution', None)  # float
     # crisp = kwargs.get('crisper', None)  # Crisper
     crisper = None  # Crisper()  # TODO: decode the dict "crisp" and construct a crisper here as it instructs.
-    return norm, threshold, sampling, interpolator, resolution, crisper
+    return norm, r_precision, threshold, sampling, interpolator, resolution, crisper
 
 
 def fuzzy_ctrl(**kwargs):
@@ -91,6 +99,11 @@ def fuzzy_ctrl(**kwargs):
             |[-100, 100]  | ``'str'``  |strictness norm                                  |
             +-------------+------------+-------------------------------------------------+
 
+        r_precision= int > 1
+            In the four basic arithmetic operators, it gauges the number of samples taken across the Cartesian product
+            for each sample point of the continuous part of the result.  Too low, and the result will appear noisy.
+            Higher numbers slow the calculation.  About 400 seems a good balance to me.
+
         threshold= float on [0,1]
             The threshold for crisping :class:`.Truth`---the fuzzy truth defining the boundary between Boolean ``True``
             and not ``False``, used by :meth:`.Truth.crisp` and ``bool``.  The default, .5, is probably best left alone.
@@ -99,6 +112,7 @@ def fuzzy_ctrl(**kwargs):
             Used when :class:`._Numerical`\\ s are constructed internally for calculations.  The default, "Chebyshev",
             creates near-minimax polynomials and probably introduces less error, but "uniform" might be appropriate for
             some highly-structured t(v) functions with narrow peaks.
+
         interpolator= str | tuple
                 Defines the default :class:`.Interpolator` used for constructing t(v) functions in :class:`.CPoints`
                 and in evaluating any :class:`._Numerical`---when internal resampling is unavoidable.
@@ -133,13 +147,16 @@ def fuzzy_ctrl(**kwargs):
             The default resolution for creating :class:`.Map`\\ s and for :meth:`.FuzzyNumber.crisp`\\ ing.  You
             really shouldn't rely on *any* default for this, since it depends on the units of your calculation and
             how precise you need them to be---things which only you know.
+
         crisper= Crisper
             I'll let you know when I write some.  They'll probably take parameters.
 
     """
-    norm, threshold, sampling, interpolator, resolution, crisper = _handle_defaults(**kwargs)
+    norm, r_precision, threshold, sampling, interpolator, resolution, crisper = _handle_defaults(**kwargs)
     if norm is not None:
         setattr(fuzzy.norm, 'default_norm', norm)
+    if r_precision is not None:
+        setattr(fuzzy.operator, 'default_r_precision', r_precision)
     if threshold is not None:
         setattr(fuzzy.truth, 'default_threshold', threshold)
     if sampling is not None:
@@ -158,6 +175,7 @@ def fuzzy_ctrl_show() -> None:
     You can set them with its counterpart, :meth:`.fuzzy_ctrl`."""
     print("These are the current global defaults for the fuzzy package:")
     print(f"norm:  {getattr(fuzzy.norm, 'default_norm')}")
+    print(f"result precision:  {getattr(fuzzy.operator, 'default_r_precision')}")
     print(f"truth threshold:  {getattr(fuzzy.truth, 'default_threshold')} == 'maybe' ")
     print(f"sampling method:  {getattr(fuzzy.number, 'default_sampling_method')}")
     print(f"interpolator:  {getattr(fuzzy.number, 'default_interpolator')}")
@@ -166,12 +184,25 @@ def fuzzy_ctrl_show() -> None:
 
 
 def safe_div(x: Union[float, np.ndarray], y: Union[float, np.ndarray]) -> Union[float, np.ndarray]:
-    """Division by zero results in the largest possible ``float``; 0/0 returns 0."""
-    # np.seterr(all='ignore')  # guilt-free division by zero
+    """Guilt-free division by zero results in the largest possible ``float``; 0/0 returns 0."""
     with np.errstate(divide='ignore', invalid='ignore'):
         r = np.divide(x, y)
     r = np.nan_to_num(r, nan=0, posinf=float_info.max / 2, neginf=-float_info.max / 2)
     return r
+
+
+def safe_log(a: Union[float, np.ndarray]) -> (Union[int, np.ndarray], Union[float, np.ndarray]):
+    """returns the sign and log of `a`.  To recover `a`, multiply sign by exp(a) and `exp`.  To multiply, multiply
+    product of all signs by the sum of all logs and `exp`."""
+    with np.errstate(all='ignore'):
+        absa = np.abs(a)
+        r = np.where(absa < 1, -np.log1p(absa), np.log(absa))
+    r = np.nan_to_num(r, nan=0, posinf=float_info.max / 2, neginf=-float_info.max / 2)
+    return np.sign(a), r
+
+
+def inv_safe_log(s: Union[int, np.ndarray], a: Union[float, np.ndarray]) -> Union[float, np.ndarray]:
+    return s * np.where(a < 0, np.expm1(-a), np.exp(a))
 
 
 def _get_sample_points(cd: Domain, cn: int, sampling_method: str) -> np.ndarray:
@@ -249,7 +280,8 @@ class Operator(FuzzyNumber, ABC):
     hasn't been set, it takes the global default, e.g.:  ``n = getattr(self, 'norm', default_norm)')``.
     Possible attributes are:
 
-    * fuzzy.norm.default_norm --- needed for most math an logic operators.
+    * fuzzy.norm.default_norm --- needed for most math and logic operators.
+    * fuzzy.operator.default_n --- needed for binary math operators.
     * fuzzy.truth.default_threshold --- needed for :class:`.Weight`.
     * fuzzy.number.default_sampling_method --- maybe; used when resampling in some operators.
     * fuzzy.number.default_interpolator --- maybe; used when resampling in some operators.
@@ -302,7 +334,8 @@ class Operator(FuzzyNumber, ABC):
         """Every operator must be able to get numerical representations of its operands,
         disassemble them, operate on their parts, return a numerical result.
 
-            * fuzzy.norm.default_norm --- needed for most math an logic operators.
+            * fuzzy.norm.default_norm --- needed for most math and logic operators.
+            * fuzzy.operator.default_r_precision --- needed for binary math operators.
             * fuzzy.truth.default_threshold --- needed for :class:`.Weight`.
             * fuzzy.number.default_sampling_method --- maybe; used when resampling in some operators.
             * fuzzy.number.default_interpolator --- maybe; used when resampling in some operators.
@@ -333,9 +366,11 @@ class Operator(FuzzyNumber, ABC):
         contained operands that are also operators.  I.e., the operator at the head of the tree pushes the kwargs
         down into the tree, overriding the defaults but respecting those given in its operands.  I.e., one can use
         a special norm for one operator, or for part of the expression, or for the whole expression."""
-        norm, threshold, sampling, interpolator, resolution, crisper = _handle_defaults(**kwargs)
+        norm, r_precision, threshold, sampling, interpolator, resolution, crisper = _handle_defaults(**kwargs)
         if (norm is not None) and not hasattr(self, "norm"):
             setattr(self, 'norm', norm)  # Used by most Operators.
+        if (r_precision is not None) and not hasattr(self, "r_precision"):
+            setattr(self, 'r_precision', r_precision)  # Used by binary arithmetic Operators.
         if (threshold is not None) and not hasattr(self, "threshold"):
             setattr(self, 'threshold', threshold)  # Used by Weight.
         if (sampling is not None) and not hasattr(self, "sampling"):
@@ -447,6 +482,9 @@ class Operator(FuzzyNumber, ABC):
         * ``a.reciprocal(**kwargs)``
         * ``Operator.reciprocal(a, **kwargs)``
 
+        Note:
+            this uses :meth:`.safe_div` so you needn't worry about division by zero.
+
         Where
 
         * ``a`` is a :class:`.FuzzyNumber` (e.g., an :class:`.Operator` or :class:`.Literal`); and
@@ -472,9 +510,8 @@ class Operator(FuzzyNumber, ABC):
         """
         return Absolute(self, **kwargs)
 
-    # TODO: make and_ and or_ associative.  Is this possible for overloads?
     # TODO: passing kwargs to symbolic calls?
-    def and_(self, b: Operand, **kwargs) -> And:
+    def and_(self, *b: Operand, **kwargs) -> And:
         """Returns an :class:`.And` object with ``self`` and ``b`` as operands (for self ∧ b).
 
         Call by:
@@ -489,7 +526,7 @@ class Operator(FuzzyNumber, ABC):
         * ``b`` is a :class:`.FuzzyNumber`, or :class:`.Truth`, or ``float`` or ``int`` or ``bool``.
         * For ``kwargs`` see :meth:`.fuzzy_ctrl`.
         """
-        return And(self, b, **kwargs)
+        return And(self, *b, **kwargs)
 
     def or_(self, *b: Operand, **kwargs) -> Or:
         """Returns an :class:`.Or` object with ``self`` and ``b`` as operands (for self ∨ b).
@@ -644,13 +681,16 @@ class Operator(FuzzyNumber, ABC):
         """
         return Iff(self, b, **kwargs)
 
-    def add(self, b: Operand, **kwargs) -> Add:
-        """Returns an :class:`.Add` object with ``self`` and ``b`` as operands (for self + b).
+    def binadd(self, *b: Operand, **kwargs) -> BinAdd:
+        """Returns a :class:`.BinAdd` object with ``self`` and ``b`` as operands (for self + b).
+
+        This is the binary version of addition.  The real work is done in :class:`.BinAdd`. The regular :meth:`.add`
+        operator simply chains together instances of :class:`.BinAdd`.
 
         Call by:
 
-        * ``a.add(b, **kwargs)``
-        * ``Operator.add(a, b, **kwargs)``
+        * ``a.binadd(b, **kwargs)``, where ``b`` can be an iterator of or any number of operands.
+        * ``Operator.binadd(b, **kwargs)``, where ``b`` can be an iterator of or any number of operands.
         * ``a + b``
 
         Where
@@ -659,7 +699,114 @@ class Operator(FuzzyNumber, ABC):
         * ``b`` is a :class:`.FuzzyNumber`, or :class:`.Truth`, or ``float`` or ``int`` or ``bool``.
         * For ``kwargs`` see :meth:`.fuzzy_ctrl`.
         """
-        return Add(self, b, **kwargs)
+        return BinAdd(self, *b, **kwargs)
+
+    def add(self, *b: Operand, **kwargs) -> Operator:
+        """Returns a :class:`.BinAdd` object with ``self`` and ``b`` as operands (for self + b1 + b2 + ...).
+
+        Call by:
+
+        * ``a.add(b, **kwargs)``, where ``b`` can be an iterator of or any number of operands.
+        * ``Operator.add(b, **kwargs)``, where ``b`` can be an iterator of or any number of operands.
+        * ``a + b``
+
+        Where
+
+        * ``self``, or ``a`` is a :class:`.FuzzyNumber` (e.g., an :class:`.Operator` or :class:`.Literal`); and
+        * ``b`` is a :class:`.FuzzyNumber`, or :class:`.Truth`, or ``float`` or ``int`` or ``bool``.
+        * For ``kwargs`` see :meth:`.fuzzy_ctrl`.
+        """
+        n = len(b)
+        if n == 1:
+            return BinAdd(self, *b, **kwargs)
+        if n == 0:
+            return self._set_attributes(**kwargs)
+        r = BinAdd(self, b[0], **kwargs)
+        for i in range(1, n):
+            r = BinAdd(r, b[i], **kwargs)
+        return r
+
+    def binmul(self, *b: Operand, **kwargs) -> BinMul:
+        """Returns a :class:`.BinMul` object with ``self`` and ``b`` as operands (for self * b1 * b2 * ...).
+
+        This is the binary version of multiply.  The real work is done in :class:`.BinMul`. The regular :meth:`.mul`
+        operator simply chains together instances of :class:`.BinMul`.
+
+        Call by:
+
+        * ``a.binmul(b, **kwargs)``, where ``b`` can be an iterator of or any number of operands.
+        * ``Operator.binmul(b, **kwargs)``, where ``b`` can be an iterator of or any number of operands.
+        * ``a * b``
+
+        Where
+
+        * ``self``, or ``a`` is a :class:`.FuzzyNumber` (e.g., an :class:`.Operator` or :class:`.Literal`); and
+        * ``b`` is a :class:`.FuzzyNumber`, or :class:`.Truth`, or ``float`` or ``int`` or ``bool``.
+        * For ``kwargs`` see :meth:`.fuzzy_ctrl`.
+        """
+        return BinMul(self, *b, **kwargs)
+
+    def mul(self, *b: Operand, **kwargs) -> Operator:
+        """Returns a :class:`.BinMul` object with ``self`` and ``b`` as operands (for self * b).
+
+        Call by:
+
+        * ``a.mul(b, **kwargs)``, where ``b`` can be an iterator of or any number of operands.
+        * ``Operator.mul(b, **kwargs)``, where ``b`` can be an iterator of or any number of operands.
+        * ``a * b``
+
+        Where
+
+        * ``self``, or ``a`` is a :class:`.FuzzyNumber` (e.g., an :class:`.Operator` or :class:`.Literal`); and
+        * ``b`` is a :class:`.FuzzyNumber`, or :class:`.Truth`, or ``float`` or ``int`` or ``bool``.
+        * For ``kwargs`` see :meth:`.fuzzy_ctrl`.
+        """
+        n = len(b)
+        if n == 1:
+            return BinMul(self, *b, **kwargs)
+        if n == 0:
+            return self._set_attributes(**kwargs)
+        r = BinMul(self, b[0], **kwargs)
+        for i in range(1, n):
+            r = BinMul(r, b[i], **kwargs)
+        return r
+
+    def sub(self, b: Operand, **kwargs) -> BinAdd:
+        """Returns an :class:`.BinAdd` object with ``self`` and ``-b`` as operands (for self - b).
+
+        Call by:
+
+        * ``a.sub(b, **kwargs)``
+        * ``Operator.sub(b, **kwargs)``
+        * ``a - b``
+
+        Where
+
+        * ``self``, or ``a`` is a :class:`.FuzzyNumber` (e.g., an :class:`.Operator` or :class:`.Literal`); and
+        * ``b`` is a :class:`.FuzzyNumber`, or :class:`.Truth`, or ``float`` or ``int`` or ``bool``.
+        * For ``kwargs`` see :meth:`.fuzzy_ctrl`.
+        """
+        return BinAdd(self, b.neg(**kwargs), **kwargs)
+
+    def div(self, b: Operand, **kwargs) -> BinMul:
+        """Returns an :class:`.BinMul` object with ``self`` and ``1/b`` as operands (for self / b).
+
+        Call by:
+
+        * ``a.div(b, **kwargs)``
+        * ``Operator.div(b, **kwargs)``
+        * ``a / b``
+
+        Note:
+            this uses :meth:`.safe_div` so you needn't worry about division by zero.
+
+        Where
+
+        * ``self``, or ``a`` is a :class:`.FuzzyNumber` (e.g., an :class:`.Operator` or :class:`.Literal`); and
+        * ``b`` is a :class:`.FuzzyNumber`, or :class:`.Truth`, or ``float`` or ``int`` or ``bool``.
+        * For ``kwargs`` see :meth:`.fuzzy_ctrl`.
+        """
+        return BinMul(self, b.reciprocal(**kwargs), **kwargs)
 
     # Here is where all the operator overloads used in expressions go:
 
@@ -723,13 +870,37 @@ class Operator(FuzzyNumber, ABC):
 
     # overloads for math operators
 
-    def __add__(self, other: Operand) -> Add:
+    def __add__(self, other: Operand) -> BinAdd:
         """Overloads the binary ``+`` (addition) operator."""
         return _promote_and_call(self, other, "add", False)
 
-    def __radd__(self, other: Operand) -> Add:
+    def __radd__(self, other: Operand) -> BinAdd:
         """Ensures that the overloading of ``+`` works as long as one operand is a ``Truth`` object."""
         return _promote_and_call(other, self, "add", False)
+
+    def __mul__(self, other: Operand) -> BinMul:
+        """Overloads the binary ``*`` (multiplication) operator."""
+        return _promote_and_call(self, other, "binmul", False)
+
+    def __rmul__(self, other: Operand) -> BinMul:
+        """Ensures that the overloading of ``*`` works as long as one operand is a ``Truth`` object."""
+        return _promote_and_call(other, self, "mul", False)
+
+    def __sub__(self, other: Operand) -> BinAdd:
+        """Overloads the binary ``-`` (subtraction) operator."""
+        return _promote_and_call(self, other, "sub", False)
+
+    def __rsub__(self, other: Operand) -> BinAdd:
+        """Ensures that the overloading of ``-`` works as long as one operand is a ``Truth`` object."""
+        return _promote_and_call(other, self, "sub", False)
+
+    def __truediv__(self, other: Operand) -> BinMul:
+        """Overloads the binary ``/`` (division) operator."""
+        return _promote_and_call(self, other, "div", False)
+
+    def __rtruediv__(self, other: Operand) -> BinMul:
+        """Ensures that the overloading of ``/`` works as long as one operand is a ``Truth`` object."""
+        return _promote_and_call(other, self, "div", False)
 
     # overloads for modifiers
 
@@ -893,27 +1064,53 @@ class MathOperator(Operator, ABC):
             super()._prepare_operand(a, **kwargs)
         return a
 
-    # form Cartesian product AND, calc lines, OR-integrate, resample?
+    @staticmethod
+    def _unpaired_x(a: _Numerical, b: _Numerical, n: Norm) \
+            -> Union[Tuple[bool, np.ndarray, np.ndarray], Tuple[bool, None, None]]:
+        """Handles cases where one or both operands have no exceptional points."""
+        if (a.xv is None) and (b.xv is None):
+            return True, None, None
+        if a.xv is None:
+            ax = a._sample(b.xv)
+            return True, b.xv, n.and_(b.xt, ax)
+        if b.xv is None:
+            bx = b._sample(a.xv)
+            return True, a.xv, n.and_(a.xt, bx)
+        return False, None, None
 
-    def _binary_math_op(self, n: Norm, sampling_method: str, interp: Interpolator,
+    @staticmethod
+    def _unpaired_c(a: _Numerical, b: _Numerical, n: Norm) \
+            -> Union[Tuple[bool, np.ndarray, np.ndarray], Tuple[bool, None, None]]:
+        """Handles cases where one or both operands have no continuous part."""
+        if (a.cv is None) and (b.cv is None):
+            return True, None, None
+        if a.cv is None:
+            return True, b.cv, n.and_(b.ct, a.e)
+        if b.cv is None:
+            return True, a.cv, n.and_(a.ct, b.e)
+        return False, None, None
+
+    def _binary_math_op(self, n: Norm, r_precision: int, sampling_method: str, interp: Interpolator,
                         a: _Numerical, b: _Numerical, allowed_domain: Domain = None) -> _Numerical:
         """general service for binary logic operators"""
 
         # self._op(x, y) is simply the arithmetic operator, needed to find the result's xv.
         # self.none_op(a.xv, b.xv, a.xt, b.xt) handles operands without xv, xt
         # self._line(n, t1, t2) describes result lines, but how to call it?
-        r = _Numerical(self.d_op(False, a.cd, b.cd), 1, None, None, None, None, n.and_(a.e, b.e))  # The result to be built.
+        e = n.and_(a.e, b.e)
+        e = n.or_(e, e)  # This is the limit of the or-integral over an infinite line.
+        r = _Numerical(self.d_op(False, a.cd, b.cd), 1, None, None, None, None, e)  # The result to be built.
         # cn, cv, ct;   xv, xt need attention.  First xv, xt:
-        use_r, xv, xt = self.none_op(a.xv, b.xv, a.xt, b.xt)    # self needs none_op to deal with empty sets...
+        use_r, xv, xt = MathOperator._unpaired_x(a, b, n)  # none_op helps with empty sets
         if use_r:
-            r.xv, r.xt = xv, xt     # ...because each operator may have to do different things with them.
-        else:       # But, if both operands have exceptional points, find the resulting ones here:
+            r.xv, r.xt = xv, xt  # ...because each operator may have to do different things with them.????no???
+        else:  # But, if both operands have exceptional points, find the resulting ones here:
             x, y = np.meshgrid(a.xv, b.xv)  # every combination of values, one from a, one from b
             xabv = self._op(x, y)  # a *op* b for each of those.
             x, y = np.meshgrid(a.xt, b.xt)  # every combination of truths, one from a, one from b
             xabt = np.ndarray.flatten(n.and_(x, y))  # a.truth & b.truth for each of those, flat.
             r.xv, i = np.unique(xabv, return_inverse=True)  # all the unique result values and where each occurs
-            rlen = len(xv)  # np.max(i) + 1           # how many there are
+            rlen = len(r.xv)  # np.max(i) + 1           # how many there are
             r.xt = np.ndarray((rlen,))  # an array to hold truths for them
             for j in range(0, rlen):  # for each
                 k = np.atleast_1d(np.where(i == j))[0]  # indices where its truths are in xabt
@@ -933,34 +1130,39 @@ class MathOperator(Operator, ABC):
                 ct = n.and_(a.ct, b.xt[i])
                 x_c_products.append(_Numerical(cd, a.cn, cv, ct, None, None))
         # Now to find the product of the operands' continuous functions:  cd, cn, cv, ct
-        use_r, cv, ct = self.none_op(a.cv, b.cv, a.ct, b.ct)  # self needs none_op to deal with empty sets...
-        if not use_r:  # If both operands have continuous parts:
-            x, y = np.meshgrid(a.ct, b.ct, indexing = 'ij')  # every combination of truths, one from a, one from b
-            cart = n.and_(x, y)  # a.truth & b.truth for each of those: AND of the Cartesian product.
-            rgi = RegularGridInterpolator((a.cv, b.cv), cart, bounds_error=False, fill_value=0, method="cubic")
-            X, Y = np.meshgrid(a.cv, b.cv, indexing = 'ij')
-            rv_all = np.unique(self._op(X, Y))   # Concentrates samples where there is structure.
+        use_r, cv, ct = MathOperator._unpaired_c(a, b, n)
+        if use_r:
+            r.cv, r.ct = cv, ct
+        else:  # If both operands have continuous parts:
+            xt, yt = np.meshgrid(a.ct, b.ct, indexing='ij')  # every combination of truths, one from a, one from b
+            cart = n.and_(xt, yt)  # a.truth & b.truth for each of those: AND of the Cartesian product.
+            rgi = RegularGridInterpolator((a.cv, b.cv), cart, bounds_error=False, fill_value=0, method="linear")
+            X, Y = np.meshgrid(a.cv, b.cv, indexing='ij')
+            rv_all = np.unique(self._op(X, Y))  # Concentrates samples where there is structure.
             if allowed_domain is not None:
                 r0 = np.argmax(rv_all >= allowed_domain[0]) - 1
                 r1 = np.argmax(rv_all > allowed_domain[1]) + 1
                 rv_all = rv_all[r0:r1]
-            want = max(a.cn, b.cn)   # But this set must be decimated lest sample sets balloon.
-            step = (len(rv_all)-1) / float(want - 1)
-            indices = [int(round(x * step)) for x in range(want)]    # The decimation is as even as possible.
+            want = max(a.cn, b.cn)  # But this set must be decimated lest sample sets balloon.
+            step = (len(rv_all) - 1) / float(want - 1)
+            indices = [int(round(x * step)) for x in range(want)]  # The decimation is as even as possible.
             cv = np.unique(np.take(rv_all, indices, mode='clip'))  # The sample points to describe the result.
             ct = np.empty_like(cv)
-            for i, v in enumerate(cv):
-                x, y, arclen = self._line(a.cv[0], a.cv[-1], b.cv[0], b.cv[-1], v)
-                t_at_each_xy = Truth.clip(rgi((x, y)))
-                ct[i] = n._or_integral(t_at_each_xy, arclen)
+            r_span = cv[-1] - cv[0]
+            for i, v in enumerate(cv):  # Someone better at Numpy might vectorize this.
+                x, y = self._line(a.cv[0], a.cv[-1], b.cv[0], b.cv[-1], v, r_precision, r_span)
+                t_at_each_xy = rgi((x, y))
+                ct[i] = n._or_integral(t_at_each_xy)
         cn = 0 if cv is None else len(cv)
-        cd = self.d_op(False, a.cd, b.cd).intersection(allowed_domain)
+        cd = self.d_op(False, a.cd, b.cd)
+        if (cd is not None) and (allowed_domain is not None):
+            cd = cd.intersection(allowed_domain)
         # Append that to x_c_products, or all the continuous functions together, and put them in the result.
         x_c_products.append(_Numerical(cd, cn, cv, ct, None, None))
         if x_c_products is not None:
             r_partial = (Operator.or_(*x_c_products))._get_numerical(cn)
             r.cd, r.cn, r.cv, r.ct = r_partial.cd, r_partial.cn, r_partial.cv, r_partial.ct
-        return r
+        return r.clean()
 
 
 # UnaryOperator:--- Not, Negative, Reciprocal, Absolute
@@ -992,16 +1194,46 @@ class UnaryOperator(Operator, ABC):
             return a
         # It must be a math operator, for which domain restrictions are more complicated.
         natural_domain = self.operands[0]._get_domain()
-        imposed_domain = self.d_op(True, allowed_domain).intersection(natural_domain)
+        if allowed_domain is None:
+            imposed_domain = natural_domain
+        else:
+            imposed_domain = self.d_op(True, allowed_domain).intersection(natural_domain)
         a = self.operands[0]._get_numerical(precision, imposed_domain)
         if isinstance(self, Absolute):
             n = getattr(self, 'norm', default_norm)
             interp = getattr(self, 'interpolator', default_interpolator)
             return self._op(n, interp, a)
         if isinstance(self, MathOperator):
-            a.cd = None if a.cd is None else self.d_op(False, a.cd)
-            a.cv = None if a.cv is None else self._op(a.cv)
             a.xv = None if a.xv is None else self._op(a.xv)
+            if a.cd is None:
+                new_d = None
+            else:
+                new_d = self.d_op(False, a.cd)
+                if isinstance(self, Reciprocal):
+                    moderate = max(abs(a.cd[0]), abs(a.cd[1]))  # If it's blown up, partition
+                    new_left, new_right = new_d[0] < -moderate, new_d[1] > moderate
+                    sampling_method = "uniform"  # getattr(fuzzy.number, 'default_sampling_method')
+                    interp = getattr(fuzzy.number, 'default_interpolator')
+                    if new_left:
+                        left_domain = Domain((new_d[0], -moderate))
+                        new_left_cv = _get_sample_points(left_domain, 5, sampling_method)
+                        new_left_cv = safe_div(1, new_left_cv)
+                        new_left_ct = a.t(new_left_cv, interp)
+                        a.cv = np.concatenate((new_left_cv, a.cv))
+                        a.ct = np.concatenate((new_left_ct, a.ct))
+                    if new_right:
+                        right_domain = Domain((moderate, new_d[1]))
+                        new_right_cv = _get_sample_points(right_domain, 5, sampling_method)
+                        new_right_cv = safe_div(1, new_right_cv)
+                        new_right_ct = a.t(new_right_cv, interp)
+                        a.cv = np.concatenate((a.cv, new_right_cv))
+                        a.ct = np.concatenate((a.ct, new_right_ct))
+                    a.cn = len(a.cv)
+            a.cd = new_d
+            if a.cv is not None:
+                a.cv = self._op(a.cv)
+                sort_indices = np.argsort(a.cv)
+                a.cv, a.ct = a.cv[sort_indices], a.ct[sort_indices]
             return a
 
     def t(self, v: Union[np.ndarray, float]) -> Union[np.ndarray, float]:
@@ -1046,12 +1278,16 @@ class Reciprocal(MathOperator, UnaryOperator):
 
     def d_op(self, inv: bool, *d: Domain) -> Domain:
         d = d[0]  # Only ever one, but the call needs multiples.
-        d0 = safe_div(1, d[0])
-        d1 = safe_div(1, d[1])
-        return Domain.sort(d0, d1)
+        if d[0] * d[1] > 0:
+            d0, d1 = safe_div(1, d[0]), safe_div(1, d[1])
+            return Domain.sort(d0, d1)
+        else:
+            span = float_info.max / 1024  # 2*max(abs(d[0]), abs(d[1]))
+            return Domain.sort(-span, span)
 
     def _op(self, v: Union[np.ndarray, float]) -> Union[np.ndarray, float]:
-        return safe_div(1, v)
+        r = safe_div(1, v)
+        return r
 
 
 class Absolute(MathOperator, UnaryOperator):
@@ -1128,17 +1364,19 @@ class BinaryOperator(Operator, ABC):
             return a.union(b)
 
     def t(self, v: Union[np.ndarray, float]) -> Union[np.ndarray, float]:
-        """This should do it for all binary functions"""
+        """This should do it for all binary functions  1000samples seems to give accurate answers"""
         if isinstance(self, LogicOperator):
             n = getattr(self, 'norm', default_norm)
             return self._op(n, self.operands[0].t(v), self.operands[1].t(v))
         if isinstance(self, MathOperator):
-            n = getattr(self, 'norm', default_norm)
-            return self._op(n, self.operands[0].t(v), self.operands[1].t(v))  # TODO Something like this? combine?
+            sop0, sop1 = self.operands[0]._get_numerical(1000), self.operands[1]._get_numerical(1000)
+            cls = type(self)
+            return cls(sop0, sop1)._get_numerical(1000).t(v)
 
     def _operate(self, precision: int, allowed_domain: Domain = None) -> _Numerical:
         """Use the operator's d_op and l_op or m_op on the three parts of the operand's numerical form."""
         n = getattr(self, 'norm', default_norm)
+        r_precision = getattr(self, 'r_precision', default_r_precision)
         sampling = getattr(self, 'sampling', default_sampling_method)
         interp = getattr(self, 'interpolator', default_interpolator)
         if isinstance(self, LogicOperator):
@@ -1148,10 +1386,14 @@ class BinaryOperator(Operator, ABC):
         else:  # It's a MathOperator.
             a_natural_domain = self.operands[0]._get_domain()
             b_natural_domain = self.operands[1]._get_domain()
-            a_imposed_domain, b_imposed_domain = self.inv_d_op(allowed_domain, a_natural_domain, b_natural_domain)
-            a = self.operands[0]._get_numerical(precision, a_imposed_domain)
-            b = self.operands[1]._get_numerical(precision, b_imposed_domain)
-            return self._binary_math_op(n, sampling, interp, a, b) # TODO impose domain on a, b, r here?
+            if allowed_domain is None:
+                a = self.operands[0]._get_numerical(precision)
+                b = self.operands[1]._get_numerical(precision)
+            else:
+                a_imposed_domain, b_imposed_domain = self.inv_d_op(allowed_domain, a_natural_domain, b_natural_domain)
+                a = self.operands[0]._get_numerical(precision, a_imposed_domain)
+                b = self.operands[1]._get_numerical(precision, b_imposed_domain)
+            return self._binary_math_op(n, r_precision, sampling, interp, a, b)
 
 
 class Imp(LogicOperator, BinaryOperator):
@@ -1254,16 +1496,19 @@ class AssociativeOperator(Operator, ABC):
                 t.append(a.t(v))
             t = np.array(t)
             return self._op(n, t)
-        if isinstance(self, MathOperator):  # TODO
-            norm = getattr(self, 'norm', default_norm)
-            s, n = self.operands[0], len(operands)
-            for i in range(1, n):
-                a = self.operands[i]
-                s = self._op(norm, s, a)
-            return s
+        if isinstance(self, MathOperator):  # TODO---this gets done by expansion to BinAdd or BinMul, so, nothing here!
+            # norm = getattr(self, 'norm', default_norm)
+            # n, sop0, sop1 = len(self.operands), self.operands[0], self.operands[1]
+            # s = sop._line(v)
+            # for i in range(1, n):
+            #     aop = self.operands[i]
+            #     s = self._op(s, a)
+            # return s
+            pass
 
     def _operate(self, precision: int, allowed_domain: Domain = None) -> _Numerical:
         n = getattr(self, 'norm', default_norm)
+        r_precision = getattr(self, 'r_precision', default_r_precision)
         sampling = getattr(self, 'sampling', default_sampling_method)
         interp = getattr(self, 'interpolator', default_interpolator)
         if isinstance(self, LogicOperator):
@@ -1279,14 +1524,17 @@ class AssociativeOperator(Operator, ABC):
                 a_natural_domain = a._get_domain()
                 b_natural_domain = b._get_domain()
                 r_natural_domain = self.d_op(False, a_natural_domain, b_natural_domain)
-                allowed_domain = allowed_domain.intersection(r_natural_domain)
+                allowed_domain = None if allowed_domain is None else allowed_domain.intersection(r_natural_domain)
                 if allowed_domain is None:
-                    a_imposed_domain, b_imposed_domain = a_natural_domain, b_natural_domain
+                    # a_imposed_domain, b_imposed_domain = a_natural_domain, b_natural_domain
+                    a = a._get_numerical(precision)
+                    b = b._get_numerical(precision)
                 else:
-                    a_imposed_domain, b_imposed_domain = self.inv_d_op(allowed_domain, a_natural_domain, b_natural_domain)
-                a = a._get_numerical(precision, a_imposed_domain)
-                b = b._get_numerical(precision, b_imposed_domain)
-                a = self._binary_math_op(n, sampling, interp, a, b, allowed_domain)
+                    a_imposed_domain, b_imposed_domain = self.inv_d_op(allowed_domain, a_natural_domain,
+                                                                       b_natural_domain)
+                    a = a._get_numerical(precision, a_imposed_domain)
+                    b = b._get_numerical(precision, b_imposed_domain)
+                a = self._binary_math_op(n, r_precision, sampling, interp, a, b, allowed_domain)
                 a = _Numerical._impose_domain(a, allowed_domain)
             return a
 
@@ -1313,7 +1561,7 @@ class Or(LogicOperator, AssociativeOperator):
 # r = a*b:    r / a = b   +ve r: -\ + \_; -ve r: _/ + /- farther from origin as r increases
 # r = a/b:    a / r = b   straight line through origin, slope = r
 
-class Add(MathOperator, AssociativeOperator):
+class BinAdd(MathOperator, BinaryOperator):
     name = str("+ ADD +")
 
     def d_op(self, inv: bool, a: Domain, b: Domain) -> Domain:  # noqa
@@ -1333,37 +1581,109 @@ class Add(MathOperator, AssociativeOperator):
         bi = Domain((max(b[0], r[0] - a[1]), min(b[1], r[1] - a[0])))
         return ai, bi
 
-    def none_op(self, axv: np.ndarray, bxv: np.ndarray, axt: np.ndarray, bxt: np.ndarray) \
-            -> Union[Tuple[bool, np.ndarray, np.ndarray],  Tuple[bool, None, None]]:
-        """Handles cases where one or both operands have no exceptional points."""
-        if axv is None:
-            return True, bxv, bxt
-        if bxv is None:
-            return True, axv, axt
-        else:
-            return False, None, None
-
     def _op(self, a: float, b: float) -> float:
         # add operands (for pairs of xv)
         # return b if (a is None) else a if (b is None) else a + b
         return a + b
 
-    def _line(self, xmin: float, xmax: float, ymin: float, ymax: float,  r: float) -> (np.ndarray, np.ndarray, float):
+    def _line(self, xmin: float, xmax: float, ymin: float, ymax: float, r: float,
+              r_precision: int, r_span: float) -> (np.ndarray, np.ndarray, float):
         # Figure out what happens in here.  describe the lines on the cartprod. MathOperator._binary_math_op uses this.
         xmin_r = max(xmin, r - ymax)
         xmax_r = min(xmax, r - ymin)
         arclen = sqrt(2 * (xmax_r - xmin_r) ** 2)
         max_arclen = sqrt(2 * (xmax - xmin) ** 2)
-        n = max(3, floor(100 * arclen / max_arclen))
-        x = np.linspace(xmin_r, xmax_r, n)   # The number doesn't matter much, but shouldn't it depend on arclen???
+        n = max(3, floor(r_precision * arclen / max_arclen))
+        x = np.linspace(xmin_r, xmax_r, n)  # The number doesn't matter much, but shouldn't it depend on arclen???
         y = r - x
-        return x, y, arclen
+        return x, y
 
-# AssociativeOperator:---  logic: and, or;  math:  add, mul
+
+class BinMul(MathOperator, BinaryOperator):
+    name = str("* MUL *")
+
+    def d_op(self, inv: bool, a: Domain, b: Domain) -> Domain:  # noqa
+        """The natural domain resulting from a * b."""
+        if a is None:
+            return b
+        if b is None:
+            return a
+        else:
+            bounds = [a[0] * b[0], a[1] * b[1], a[0] * b[1], a[1] * b[0]]
+            return Domain((min(bounds), max(bounds)))
+
+    def inv_d_op(self, r: Domain, a: Domain, b: Domain) -> (Domain, Domain, float):  # noqa
+        """The extreme domains of a and b that could lead to that of r.
+        r is imposed, is in terms of this operator's result.
+
+        For multiplication, each ``r`` restricts one or two subdomains of ``a`` and ``b``,
+        and this must be handled in :meth:`.BinMul._line`, not here."""
+        return a, b
+
+    def _op(self, a: float, b: float) -> float:
+        return a * b
+
+    def _branch_points(self, r, n, max_arclen, xbound, left):
+        ybound = safe_div(r, xbound)  # np.sort(safe_div(r, xs))
+        arclen = abs(ybound[1] - ybound[0]) + xbound[1] - xbound[0]
+        n = ceil(n * arclen / max_arclen)  # to fix the number of samples.
+        n = n + 1 if (n % 2) == 0 else n  # Insist on an odd number of samples.
+        # determine endpoints, posit connecting line.
+        m = safe_div((ybound[1] - ybound[0]), (xbound[1] - xbound[0]))
+        a = ybound[0] - xbound[0] * m
+        # sample connecting line
+        xs = np.linspace(xbound[0], xbound[1], n)
+        ys = m * xs + a
+        # posit perpendiculars at its sample points. y = -m * x + b
+        b = 2 * xs * m + a
+        # find their intersections with the hyperbola r=xy.  These are the sample points to report.
+        D = np.sqrt(b ** 2 - 4 * -m * -r)
+        xm, xp = safe_div((-b - D), (2 * -m)), safe_div((-b + D), (2 * -m))
+        x = np.where(xm<xp, xm, xp) if left else np.where(xm>xp, xm, xp)
+        y = safe_div(r, x)
+        return x, y
+
+    def _line(self, x0: float, x3: float, y0: float, y3: float, r: float,
+              n: int, r_span: float) -> (np.ndarray, np.ndarray, float):
+        """Constructs and samples the line (a hyperbola) on the Cartesian product of ``a * b`` where the result
+        is ``r``, returning sampled points (x, y) and the arclength of the line (I think the caller only checks
+        whether it's nonzero, but, in here, we use it to determine the number of sample points.  The extreme domains
+        of ``a`` and ``b`` are [x0,x3], and [y0,y3].  In general, the line will have two branches, left, and right,
+        on subdomains [x0,x1] and [x2,x3] (if either extreme domain encompasses an axis), but it may be that only one
+        of these exists. The maximum number of samples per line for an operation is a global (package) attribute.
+        This applies to the longest line.  Shorter lines are apportioned sample points in proportion to their
+        arc length, so that the length per point is roughly constant within an operation.  So, the arc length needn't
+        be very precise.  I use ``x2 < x1`` to test that only one branch exists."""
+        # moderate_span = 1000    # For cases where div-reciprocal has made rspan enormous
+        # rspan = min(r_span, moderate_span) if isfinite(r_span) else moderate_span
+        # hwhm = r_span/2000
+        # rq = r ** 2 if abs(r) < 1e100 else hwhm
+        # extra = 1   # + 1 * hwhm  / (hwhm ** 2 + rq) # 10 at r=0, 1 by abs(r/rspan)>=.01
+        # n = ceil(r_precision * extra)    # TODO: might need to increase when r is near 0
+        # epsilon = 0.1  # This might need to be a little larger if np.rgi gives errors.
+        v_span, h_span = y3 - y0, x3 - x0
+        max_arclen = v_span + h_span
+        # if abs(r) < epsilon:  # The hyperbola is so extreme it just outlines the axes, x=0 and y=0.
+        #     vn, hn = ceil(n * v_span / max_arclen), ceil(n * h_span / max_arclen)  # Apportion the sample points.
+        #     vp, hp = np.linspace(y0, y3, vn), np.linspace(x0, x3, hn)  # The sample points.
+        #     # I ought to check that the origin isn't sampled twice, but I'm not.
+        #     x, y = np.concatenate((hp, np.zeros_like(vp))), np.concatenate((np.zeros_like(hp), vp))
+        #     return x, y, max_arclen
+        x, y = np.empty(0), np.empty(0)
+        xs = np.sort(np.array([0, x0, x3, safe_div(r, y0), safe_div(r, y3)]))
+        xs = xs[(xs >= x0) & (xs <= x3)]
+        for i in range(len(xs) - 1):
+            xtest = (xs[i] + xs[i+1]) / 2
+            ytest = safe_div(r, xtest)
+            if (ytest >= y0 and ytest <= y3):
+                xseg, yseg = self._branch_points(r, n, max_arclen, xs[i:i+2], xtest<0)
+                x, y = np.concatenate((x, xseg)), np.concatenate((y, yseg))
+        return x, y
+
 # Qualifiers:  normalize, weight, focus
 # FuzzyExpression---with all the static methods;  overloaded operators
 
 # class Op(Operator):
 #
 #
-#
+# Mul(self, *b, **kwargs)

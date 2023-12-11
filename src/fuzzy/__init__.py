@@ -178,7 +178,7 @@ a Python method, use :class:`.Literal`.  If you know about certain important poi
 data, but not a detailed mathematical function, use :class:`.CPoints`.  If it's discrete, and you know the points that
 matter or can determine them algorithmically, use :class:`.DPoints`.
 
-First, you must implement your class's ``__init__`` method.  Add to it the parameters that shape your function.
+First, you must implement your class's ``__init__`` method.  BinAdd to it the parameters that shape your function.
 If you're subclassing :class:`.DPoints` or :class:`.CPoints`, you'll set
 your points in it as well.  Finally, remember to call the superclass's constructor in your
 own: ``super().__init__(...)``.
@@ -637,15 +637,27 @@ Traditionally, fuzzy arithmetic is defined by a few alpha cuts and some interval
 the great subtlety that's possible.  I have attempted a more complete and rigorous definition of the four
 basic operators.
 
+In general, since every possible value of the operands, :math:`a` and :math:`b`, have a truth, every possible pair of
+values, one from :math:`a` and one from :math:`b`, have a truth that combines their individual
+truths:  :math:`t_{ab} = t_a \\land t_b`.  You can visualize this as a Cartesian product, a plane indexed
+by  :math:`(x,y)` coördinates, possible values of :math:`a` and :math:`b`.  For any operator, there are an infinite
+number of pairs for each result, :math:`r = a * b`.  For each result, the truths of all its pairs are combined by
+**oring** them all together:   :math:`t_r = \\lor t_{ab}\\,  |\\,  a * b = r`.  The fuzzy result, is then the
+collection of (result value, truth) pairs.  This is the mathematics of the fuzzy operation.
 
-In a binary operation, every element of of the first operand, :math:`a` should operate on every element
-of the second operand, :math:`b`, with the exception of elsewhere truths, which do not operate with
-any but their own kind.  The result of any operation with respect to element types is:
+The organization of the :class:`._Numerical` class complicates this picture somewhat.  It is conceived as layers
+that are exceptions to those below: the continuous domain sits atop the "elsewhere" plane as an exception, and the
+set of exceptional points sits atop this terrain.  We need a computation that achieves the equivalent of the above
+mathematics using this data structure.  Each element of the two operands interacts to produce a new element and
+these are combined in the resulting :class:`._Numerical` object.  The result of any operation with respect
+to element types is:
 
     * Two points: another point.
     * Two continuous functions: another continuous function.
     * One point and one continuous function: another continuous function.
     * Two elsewhere truths:  another elsewhere truth.
+    * An unpaired point set: another point set.
+    * An unpaired continuous function: another continuous function.
 
 All results of like type are then **ored** together to produce a complete :class:`_Numerical` object result.
 I'll describe the above operations in turn.
@@ -670,6 +682,11 @@ latter increases it, just as it would with probability.
 
 So, in general, the truths of every combination of :math:`a` **and** :math:`b` are found.
 If there are multiple truths for one result, they are **ored** together.
+
+If a point set occurs in one operand, but not the other, its truths are simply anded with the truth of the
+corresponding values in the other operand, and the resulting (value, truth) pairs are the exceptional points of the
+result.  (This would appear to introduce errors if the operand is a subtrahend or divisor, but as subtraction and
+division will be recast as addition and multiplication, this is avoided.)
 
 
 Between a Point and a Function
@@ -713,18 +730,26 @@ It is the business of an operator method to form the Cartesian product as a nume
 with :math:`t(a,b) = t(a) \\land t(b)`, describe the correct line formula for the operator, and to sample the domain
 of possible results at the appropriate points, or-integrating over the line for each :math:`r` sample.  The resulting
 set of samples represents the continuous function of truth vs. value that defines the result.  The remaining
-question is at what values should :math:`r` be sampled.
+question is: at what values should :math:`r` be sampled?
 
 My insistence on using only one :math:`D_c` introduces a slight complication to the sampling of the result.
-A logical operation might create a number that has features concentrated in small subdomains separated by vast
+A logical operation might create a fuzzy number that has features concentrated in small subdomains separated by vast
 featureless subdomains.  If this number then enters into an arithmetic operation, a simple uniform or Chebyshev
-sampling of the result will not do.  The sample points must be chosen carefully to avoid loosing detail.  If one
-imagines the diagonal across the Cartesian product, covering the full domain of the result, this is sampled wherever
-an orthogonal line from one of the operands' sample points intersects it.  This ensures sufficient detail in the
-result where there is structure in the operands.
+sampling of the result will not do.  The sample points must be chosen carefully to avoid loosing detail.  First, a
+sort of cross product is formed: every combination of sample points :math:`(v_a, v_b)` is considered.  These each have
+a result :math:`r = v_a * v_b`.  Duplicate results are discarded and this gives us a set of sample values that ensures
+sufficient detail in the result where there is structure in the operands.  However, to avoid the number of sample
+points from ballooning with each operation, we must winnow this set by discarding points so that the total
+number of points in the result does not greatly exceed the maximum among its operands.  So, the sample set is decimated
+uniformly; areas of greater structure are still more densely populated.
 
 Finally, all of the continuous function results (this one and the ones from the previous section)
 are **ored** together to produce a resulting continuous function element.
+
+
+If a continuous part occurs in one operand, but not the other, its truths are simply *anded* with the elsewhere truth
+of the other operand, and this becomes the continuous part of the result.  (As with exceptional points, the recasting
+of subtraction and division avoids errors where the unpaired element is a subtrahend or divisor.)
 
 Operations on Elsewhere
 -----------------------
@@ -733,15 +758,18 @@ That leaves the vast "elsewhere" territory, outside the Cartesian product. What 
 between this region and the defined domains, :math:`D_d`?  the or-integral along a result line across
 the infinite plane may encounter some other truths over finite regions, but they are proportionally infinitesimal.
 The result would be dominated by the infinite number of elsewhere points and the defined points would be insignificant.
-We would end up **oring** together an infinite number of elsewhere truths, :math:`t_e`.  For most norms, the resulting
-truth would be 0 if :math:`t_e=0` and 1 otherwise.  For non-zero :math:`t_e`, all the information in the defined region
-would have to be thrown away.
+We would end up **oring** together an infinite number of elsewhere truths, :math:`t_e`.  In most cases, all the
+information in the defined region would have to be thrown away.
 
 My solution is to only consider :math:`D_e` separately:  the two areas---defined and undefined---operate only among
 their own kind and not with each other.  I justify this by saying that the large undefined area does not affect
 the small defined area because the smaller is an exception to the larger.  In the same way that the exceptional points
 are conceptually added after the continuous domain, and do not affect the sampling of the domain, so the
 continuous domain is independent of the default truth, and sits on :math:`D_e` as an exception.
+
+Following the definition of the or-integral to be explained below, the elsewhere truths are combined
+by :math:`t_r = (t_a\\land t_b)\\lor(t_a\\land t_b)`.  This is the limit of the or-integral when we consider that
+their truths over all real values are nearly constant and equal to their "elsewhere" truths.
 
 It would be simpler to make the elsewhere truth always zero.  In practice, it usually will be.  What are the uses
 of a non-zero elsewhere?  I can think of two:
@@ -750,30 +778,40 @@ of a non-zero elsewhere?  I can think of two:
 * If it is very small, say If :math:`t_e = .001`, it allows one to proceed even if all defined values become false.
 
 
+The Operators
+-------------
+
+Addition is our model.  Multiplication is defined by the addition of logs.  Subtraction is recast as the addition of
+the first operand to the negation of the second.  Division is recast as the multiplication of the first operand by the
+reciprocal of the second.  Associative operations (those that can take more than two operands) are simply computed
+as chains of binary operation.
+
+
 The Or-integral
 ---------------
 
 I need something like an integral that, instead of summing an infinite number of infinitesimals, **ors** together
-an infinite number of truths of infinitesimal significance.  The result cannot be less true than the truest point
-on the integrand.  If **or** is defined as :math:`\\max(a, b)`, it seems clear that this is simply
+an infinite number of truths of infinitesimal significance.  I don't have a rigorous definition, but I know how such
+a thing should behave:
+
+* The result cannot be less true than the truest point on the integrand, its maximum.
+* The result approaches 1 as the average of the integrand approaches 1.
+* The speed at which it approaches 1 must depend on the norm (faster for stricter norms).
+* The average truth of the integrand cannot exceed its maxiumum.
+
+For our practical purposes, I define the or-integral as:
 
 .. math::
 
-    \\lor_0^{\\ell}\\,t(x)\\, dx =\\, \\max\\left(t(x)\\right).
+    \\lor_0^\\ell\\, t(x)\\, dx =\\, M \\lor A
 
-For most norms, however, the truth increases any time two
-non-zero truths are **ored** together.  So, I expect an infinite number of non-zero norms to approach a truth of 1
-when **ored** together.  I think that the following definition of the or-integral for such norms will at least
-have the correct behavior at the limits:
-
-.. math::
-
-    \\lor_0^\\ell\\, t(x)\\, dx =\\, M - A + A/M
-
-and 0 if :math:`M=0`, where :math:`A = (1/\\ell) \\int_0^\\ell\\, t(x)\\, dx`
+where :math:`A = (1/\\ell) \\int_0^\\ell\\, t(x)\\, dx`
 and :math:`M = \\max\\left(t(x)\\right)`---the average and maximum truths on :math:`[0, \\ell]`.
-The rate at which the result should approach 1 depends in part on the norm, but I don't know how to take
-that into account.  I may well be wrong about any part of this.
+
+The result for a single value of non-zero truth is that truth.  For a constant truth, :math:`t`,
+it is :math:`t \\lor t`.  For a truth function between these extremes, its result varies between the above results
+depending on the strictness of the norm.  As the average approaches 1, so does the result.  Therefore, the above
+assumptions about how the integral must behave are satisfied.
 
 
 Problems in Real Analysis

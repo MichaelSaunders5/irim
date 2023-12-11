@@ -211,7 +211,7 @@ data, but not a detailed mathematical function, use :class:`.CPoints`.  If it's 
 matter or can determine them algorithmically, use :class:`.Numerical`; and, if that is the case but you also need
 to map them from some other range, use :class:`.DPoints`.
 
-First, you must implement your class's ``__init__`` method.  Add to it the parameters that shape your function.
+First, you must implement your class's ``__init__`` method.  BinAdd to it the parameters that shape your function.
 If you're subclassing :class:`.Numerical`, :class:`.DPoints`, or :class:`.CPoints`, you'll set
 your points in it as well.  Finally, remember to call the superclass's constructor in your
 own: ``super().__init__(...)``.
@@ -686,6 +686,15 @@ class _Numerical(FuzzyNumber):  # user doesn't see it!  dataclass?
         self.xv = xv  # exceptional points: value samples
         self.xt = xt  # exceptional points: truth samples
         super().__init__(e)  # elsewhere
+        self.clean()
+
+    def clean(self):
+        if self.xv is not None:
+            i = np.where((self._sample(self.xv) == self.xt))
+            self.xv, self.xt = np.delete(self.xv, i), np.delete(self.xt, i)
+            if len(self.xv) == 0:
+                self.xv, self.xt = None, None
+        return self
 
     def __str__(self):
         if self.cd is None:

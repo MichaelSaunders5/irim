@@ -275,7 +275,7 @@ class Norm(ABC):
     # (I'm doing this because later, for fuzzy arithmetic operators, I'll need to take fuzzy Or-integrals over lines
     # (describing an operator) on the t-norm (fuzzy *and*) of a Cartesian product of two fuzzy values (the operands).)
 
-    def _or_integral(self, z: np.ndarray, line_length: float) -> float:
+    def _or_integral(self, z: np.ndarray) -> float:
         """The usual fuzzy logic OR-integral.
 
         I need something like an integral that, instead of summing an infinite number of infinitesimals,
@@ -296,13 +296,11 @@ class Norm(ABC):
         m = np.max(z)
         if m == 0:
             return 0
-        if line_length == 0:
-            a = z[len(z) // 2]
         else:
             a = np.sum(z) / len(z)    # np.trapz(z) / line_length
             # s = np.trapz(z) / len(z)  # the definite (Riemann) line integral
             # p = exp(np.trapz(np.log(z))) / len(z)          # the definite geometric (product) line integral
-        return self.or_(m, a)  # m - a + a / m        # m    m + a - a * m    ##s-p    # m - a + a * m
+        return self.or_(m, a)  #  a  # np.sum(z)/1400 #
 
 
 # Here I'll implement the simple Norms from least to most strict (strong and, weak or to the reverse):
@@ -349,7 +347,7 @@ class MinMax(Norm):
     def _or(self, a: Operand, b: Operand) -> np.ndarray:
         return np.fmax(a, b)
 
-    def _or_integral(self, z: np.ndarray, line_length: float) -> float:
+    def _or_integral(self, z: np.ndarray) -> float:
         # Equivalent to the standard, but a bit faster.
         return np.amax(z)
 
@@ -530,8 +528,8 @@ class CompoundNorm(Norm):
     def _or(self, a: Operand, b: Operand) -> np.ndarray:
         return self._combination(self._n1.or_(a, b), self._n2.or_(a, b))
 
-    def _or_integral(self, z: np.ndarray, line_length: float) -> float:
-        return self._combination(self._n1._or_integral(z, line_length), self._n2._or_integral(z, line_length))
+    def _or_integral(self, z: np.ndarray) -> float:
+        return self._combination(self._n1._or_integral(z), self._n2._or_integral(z))
 
 
 # noinspection PyAbstractClass

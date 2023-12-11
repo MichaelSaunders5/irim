@@ -801,7 +801,7 @@ class DPoints(CPoints):
                  expected_range: Tuple[float, float] = (0, 1), map: str = "lin", **kwargs) -> None:
         """Args:
 
-            points:  A collection of (value, truth) pairs---discrete points.
+            points:  A collection of (value, truth) pairs---discrete points (an iterable of tuples).
                 All values must be unique and all truths will be scaled to (keyword argument) ``range``.
             expected_range: The expected range of input data.  Default: [0,1].
 
