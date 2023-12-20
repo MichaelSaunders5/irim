@@ -8,20 +8,25 @@ from fuzzy.operator import *
 from math import log, exp
 
 # fuzzy_ctrl(norm={'n1':"str", 'n1p':[-80], 'n2':"hhp", 'n2p':[20], 'cnp':70})
-fuzzy_ctrl(norm={'n1': "pp"})
+fuzzy_ctrl(norm={'n1': "pp"})       #  , r_precision=100000
 fuzzy_ctrl_show()
 
 # t = Triangle(-.9,0.1,1.1, elsewhere=0, points=[(2, .8)])
 # a = Triangle(0, 2, 4, elsewhere=0)
-b = Triangle(-2, 0, 2, elsewhere=0)
-a = Triangle(0, 2, 4, elsewhere=0)
+# b = Triangle(-2, 0, 2, elsewhere=0)
+a = Triangle(-1, 0, 2)
+b = Triangle(-2, 0, 1)
 
-c = a * b
-d = b * a
-c.display()
-d.display()
-# 2*0: some ripples about 0, but 1 at 0.
-# 0*2: same ripples, but dramatic divot: .93 at 0
+c = a / b
+e = c._expression_as_numerical(.01, (-8,8))
+e.display()
+d = b / a
+f = d._expression_as_numerical(.01, (-4,4))
+f.display()
+
+# 2 * 0: some ripples about 0, but 1 at 0.
+# 0 * 2: same ripples, but dramatic divot: .93 at 0
+# sampling on axis with _any_ epsilon, however close to 0 solves this, but for slopes crossing 0 there's still a thing.
 
 # a = Trapezoid(-5, 4.9, 5.1, 6, elsewhere=0)      # , points=[(3, .2), (8, 1)]
 # a = Trapezoid(-.5, .49, .51, .6, elsewhere=0)      # , points=[(3, .2), (8, 1)]

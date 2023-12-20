@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from math import pi, sqrt, floor, ceil, log1p  # pi, is finite, log
+from math import pi, sqrt, floor, ceil  # pi, is finite, log
 from sys import float_info
 from typing import Union, Tuple  # , ClassVar,
 
@@ -185,9 +185,18 @@ def fuzzy_ctrl_show() -> None:
 
 def safe_div(x: Union[float, np.ndarray], y: Union[float, np.ndarray]) -> Union[float, np.ndarray]:
     """Guilt-free division by zero results in the largest possible ``float``; 0/0 returns 0."""
-    with np.errstate(divide='ignore', invalid='ignore'):
+    with np.errstate(over='ignore', divide='ignore', invalid='ignore'):
         r = np.divide(x, y)
     r = np.nan_to_num(r, nan=0, posinf=float_info.max / 2, neginf=-float_info.max / 2)
+    return r
+
+
+def safe_mul(x: Union[float, np.ndarray], y: Union[float, np.ndarray]) -> Union[float, np.ndarray]:
+    """Multiplication that cannot overflow---inf becomes the largest possible ``float`` / 2."""
+    with np.errstate(over='ignore', invalid='ignore'):
+        r = np.multiply(x, y)
+        safenum = sqrt(sqrt(float_info.max))
+    r = np.nan_to_num(r, nan=0, posinf=safenum, neginf=-safenum)
     return r
 
 
@@ -1140,9 +1149,8 @@ class MathOperator(Operator, ABC):
             X, Y = np.meshgrid(a.cv, b.cv, indexing='ij')
             rv_all = np.unique(self._op(X, Y))  # Concentrates samples where there is structure.
             if allowed_domain is not None:
-                r0 = np.argmax(rv_all >= allowed_domain[0]) - 1
-                r1 = np.argmax(rv_all > allowed_domain[1]) + 1
-                rv_all = rv_all[r0:r1]
+                rv_all = rv_all[(rv_all >= allowed_domain[0])]
+                rv_all = rv_all[(rv_all < allowed_domain[1])]
             want = max(a.cn, b.cn)  # But this set must be decimated lest sample sets balloon.
             step = (len(rv_all) - 1) / float(want - 1)
             indices = [int(round(x * step)) for x in range(want)]  # The decimation is as even as possible.
@@ -1203,38 +1211,67 @@ class UnaryOperator(Operator, ABC):
             n = getattr(self, 'norm', default_norm)
             interp = getattr(self, 'interpolator', default_interpolator)
             return self._op(n, interp, a)
-        if isinstance(self, MathOperator):
-            a.xv = None if a.xv is None else self._op(a.xv)
-            if a.cd is None:
-                new_d = None
-            else:
-                new_d = self.d_op(False, a.cd)
-                if isinstance(self, Reciprocal):
+        a.xv = None if a.xv is None else self._op(a.xv)
+        if a.cd is None:
+            new_d = None
+        else:
+            new_d = self.d_op(False, a.cd)
+            if isinstance(self, Reciprocal):
+                sampling_method = getattr(fuzzy.number, 'default_sampling_method')  # "uniform"  #
+                interp = getattr(fuzzy.number, 'default_interpolator')
+                if allowed_domain is None:
                     moderate = max(abs(a.cd[0]), abs(a.cd[1]))  # If it's blown up, partition
                     new_left, new_right = new_d[0] < -moderate, new_d[1] > moderate
-                    sampling_method = "uniform"  # getattr(fuzzy.number, 'default_sampling_method')
-                    interp = getattr(fuzzy.number, 'default_interpolator')
                     if new_left:
                         left_domain = Domain((new_d[0], -moderate))
                         new_left_cv = _get_sample_points(left_domain, 5, sampling_method)
                         new_left_cv = safe_div(1, new_left_cv)
-                        new_left_ct = a.t(new_left_cv, interp)
+                        new_left_ct = a._sample(new_left_cv, interp)
                         a.cv = np.concatenate((new_left_cv, a.cv))
                         a.ct = np.concatenate((new_left_ct, a.ct))
                     if new_right:
                         right_domain = Domain((moderate, new_d[1]))
                         new_right_cv = _get_sample_points(right_domain, 5, sampling_method)
                         new_right_cv = safe_div(1, new_right_cv)
-                        new_right_ct = a.t(new_right_cv, interp)
+                        new_right_ct = a._sample(new_right_cv, interp)
                         a.cv = np.concatenate((a.cv, new_right_cv))
                         a.ct = np.concatenate((a.ct, new_right_ct))
-                    a.cn = len(a.cv)
-            a.cd = new_d
-            if a.cv is not None:
-                a.cv = self._op(a.cv)
-                sort_indices = np.argsort(a.cv)
-                a.cv, a.ct = a.cv[sort_indices], a.ct[sort_indices]
-            return a
+                else:
+                    if natural_domain.contains(0):
+                        x1, x2 = imposed_domain[0], safe_div(1, allowed_domain[0])
+                        x3, x4 = safe_div(1, allowed_domain[1]), imposed_domain[1]
+                        left_domain = None if x2 < x1 else Domain((x1, x2))
+                        right_domain = None if x4 < x3 else Domain((x3, x4))
+                        lspan = 0 if left_domain is None else left_domain.span()
+                        rspan = 0 if right_domain is None else right_domain.span()
+                        tspan = lspan + rspan
+                        left_precision = ceil(precision * lspan / tspan)
+                        right_precision = ceil(precision * rspan / tspan)
+                        left_precision = left_precision + 1 if left_precision % 2 == 0 else left_precision
+                        right_precision = right_precision + 1 if right_precision % 2 == 0 else right_precision
+                        new_cv = np.empty(0)
+                        if left_domain is not None:
+                            guard_step = lspan / (left_precision + 1)
+                            new_cv = _get_sample_points(left_domain, left_precision, sampling_method)
+                            new_cv = np.concatenate(([new_cv[0] - guard_step], new_cv, [new_cv[-1] + guard_step]))
+                        if right_domain is not None:
+                            guard_step = rspan / (right_precision + 1)
+                            right_cv = _get_sample_points(right_domain, right_precision, sampling_method)
+                            right_cv = np.concatenate(
+                                ([right_cv[0] - guard_step], right_cv, [right_cv[-1] + guard_step]))
+                            new_cv = np.concatenate((new_cv, right_cv))
+                        if len(new_cv) > 0:
+                            new_ct = self.operands[0]._sample(new_cv)
+                            a.cv = new_cv
+                            a.ct = new_ct
+                a.cn = len(a.cv)
+        a.cd = None
+        if a.cv is not None:
+            a.cv = self._op(a.cv)
+            sort_indices = np.argsort(a.cv)
+            a.cv, a.ct = a.cv[sort_indices], a.ct[sort_indices]
+            a.cd = Domain((a.cv[1], a.cv[-2]))
+        return a
 
     def t(self, v: Union[np.ndarray, float]) -> Union[np.ndarray, float]:
         """"""
@@ -1278,12 +1315,14 @@ class Reciprocal(MathOperator, UnaryOperator):
 
     def d_op(self, inv: bool, *d: Domain) -> Domain:
         d = d[0]  # Only ever one, but the call needs multiples.
-        if d[0] * d[1] > 0:
-            d0, d1 = safe_div(1, d[0]), safe_div(1, d[1])
-            return Domain.sort(d0, d1)
-        else:
+        if d.contains(0):
             span = float_info.max / 1024  # 2*max(abs(d[0]), abs(d[1]))
             return Domain.sort(-span, span)
+        else:
+            d0, d1 = safe_div(1, d[0]), safe_div(1, d[1])
+            return Domain.sort(d0, d1)
+
+
 
     def _op(self, v: Union[np.ndarray, float]) -> Union[np.ndarray, float]:
         r = safe_div(1, v)
@@ -1390,10 +1429,14 @@ class BinaryOperator(Operator, ABC):
                 a = self.operands[0]._get_numerical(precision)
                 b = self.operands[1]._get_numerical(precision)
             else:
+                # if isinstance(self.operands[0], Reciprocal):
+                #     a_natural_domain = a_natural_domain.intersection(allowed_domain)
+                # if isinstance(self.operands[1], Reciprocal):
+                #     b_natural_domain = b_natural_domain.intersection(allowed_domain)
                 a_imposed_domain, b_imposed_domain = self.inv_d_op(allowed_domain, a_natural_domain, b_natural_domain)
                 a = self.operands[0]._get_numerical(precision, a_imposed_domain)
                 b = self.operands[1]._get_numerical(precision, b_imposed_domain)
-            return self._binary_math_op(n, r_precision, sampling, interp, a, b)
+            return self._binary_math_op(n, r_precision, sampling, interp, a, b, allowed_domain)
 
 
 class Imp(LogicOperator, BinaryOperator):
@@ -1618,15 +1661,33 @@ class BinMul(MathOperator, BinaryOperator):
 
         For multiplication, each ``r`` restricts one or two subdomains of ``a`` and ``b``,
         and this must be handled in :meth:`.BinMul._line`, not here."""
-        return a, b
+        alims = np.array([safe_div(r[0], b[0]), safe_div(r[0], b[1]), safe_div(r[1], b[0]), safe_div(r[1], b[1])])
+        blims = np.array([safe_div(r[0], a[0]), safe_div(r[0], a[1]), safe_div(r[1], a[0]), safe_div(r[1], a[1])])
+        print(f"r {r},  a {a},  b {b}")
+        print(f"alims {alims}")
+        print(f"blims {blims}")
+        if a.contains(0):
+            # blims = np.append(blims, (safe_div(r[0], 0), safe_div(r[1], 0)))
+            # blims = np.append(blims, (a[0], a[1]))
+            blims = np.array(r)
+        if b.contains(0):
+            # alims = np.append(alims, (safe_div(r[0], 0), safe_div(r[1], 0)))
+            # alims = np.append(alims, (b[0], b[1]))
+            alims = np.array(r)
+        alimit, blimit = Domain((np.min(alims), np.max(alims))), Domain((np.min(blims), np.max(blims)))
+
+        print(f"alimit, blimit {alimit, blimit}")
+        print(f"return: {a.intersection(alimit), b.intersection(blimit)}")
+        return a.intersection(alimit), b.intersection(blimit)
 
     def _op(self, a: float, b: float) -> float:
-        return a * b
+        return safe_mul(a, b)
 
-    def _branch_points(self, r, n, max_arclen, xbound, left):
+    @staticmethod
+    def _branch_points(r, n, max_arclen, xbound, left):
         ybound = safe_div(r, xbound)  # np.sort(safe_div(r, xs))
         arclen = abs(ybound[1] - ybound[0]) + xbound[1] - xbound[0]
-        n = ceil(n * arclen / max_arclen)  # to fix the number of samples.
+        n = ceil(n * (arclen / max_arclen))  # to fix the number of samples.
         n = n + 1 if (n % 2) == 0 else n  # Insist on an odd number of samples.
         # determine endpoints, posit connecting line.
         m = safe_div((ybound[1] - ybound[0]), (xbound[1] - xbound[0]))
@@ -1637,9 +1698,9 @@ class BinMul(MathOperator, BinaryOperator):
         # posit perpendiculars at its sample points. y = -m * x + b
         b = 2 * xs * m + a
         # find their intersections with the hyperbola r=xy.  These are the sample points to report.
-        D = np.sqrt(b ** 2 - 4 * -m * -r)
+        D = np.sqrt(safe_mul(b, b) - 4 * safe_mul(-m, -r))
         xm, xp = safe_div((-b - D), (2 * -m)), safe_div((-b + D), (2 * -m))
-        x = np.where(xm<xp, xm, xp) if left else np.where(xm>xp, xm, xp)
+        x = np.where(xm < xp, xm, xp) if left else np.where(xm > xp, xm, xp)
         y = safe_div(r, x)
         return x, y
 
@@ -1660,23 +1721,28 @@ class BinMul(MathOperator, BinaryOperator):
         # rq = r ** 2 if abs(r) < 1e100 else hwhm
         # extra = 1   # + 1 * hwhm  / (hwhm ** 2 + rq) # 10 at r=0, 1 by abs(r/rspan)>=.01
         # n = ceil(r_precision * extra)    # TODO: might need to increase when r is near 0
-        # epsilon = 0.1  # This might need to be a little larger if np.rgi gives errors.
+        epsilon = 0 # 1e-2  # This might need to be a little larger if np.rgi gives errors.
         v_span, h_span = y3 - y0, x3 - x0
         max_arclen = v_span + h_span
-        # if abs(r) < epsilon:  # The hyperbola is so extreme it just outlines the axes, x=0 and y=0.
-        #     vn, hn = ceil(n * v_span / max_arclen), ceil(n * h_span / max_arclen)  # Apportion the sample points.
-        #     vp, hp = np.linspace(y0, y3, vn), np.linspace(x0, x3, hn)  # The sample points.
-        #     # I ought to check that the origin isn't sampled twice, but I'm not.
-        #     x, y = np.concatenate((hp, np.zeros_like(vp))), np.concatenate((np.zeros_like(hp), vp))
-        #     return x, y, max_arclen
+        if abs(r) < epsilon:  # The hyperbola is so extreme it just outlines the axes, x=0 and y=0.
+            vn, hn = ceil(n * (v_span / max_arclen)), ceil(n * (h_span / max_arclen))  # Apportion the sample points.
+            vn, hn = vn + 1 if (vn % 2) == 0 else vn, hn + 1 if (hn % 2) == 0 else hn  # make both odd numbers
+            vp, hp = np.linspace(y0, y3, vn), np.linspace(x0, x3, hn)  # The sample points.
+            # I ought to check that the origin isn't sampled twice, but I'm not.
+            x, y = np.concatenate((hp, np.zeros_like(vp))), np.concatenate((np.zeros_like(hp), vp))
+            return x, y
         x, y = np.empty(0), np.empty(0)
+        # xs = np.sort(np.array([-sqrt(epsilon), sqrt(epsilon), x0, x3, safe_div(r, y0), safe_div(r, y3)]))
         xs = np.sort(np.array([0, x0, x3, safe_div(r, y0), safe_div(r, y3)]))
+        # Partitioning at +/-epsilon rather than at 0 and this choice of epsilon seems to minimize the divot
+        # at results of about 0. (e.g., in multiplying numbers with domains that include 0).
+        # I don't know the origin of the anomalous divot about 0.
         xs = xs[(xs >= x0) & (xs <= x3)]
         for i in range(len(xs) - 1):
-            xtest = (xs[i] + xs[i+1]) / 2
+            xtest = (xs[i] + xs[i + 1]) / 2
             ytest = safe_div(r, xtest)
-            if (ytest >= y0 and ytest <= y3):
-                xseg, yseg = self._branch_points(r, n, max_arclen, xs[i:i+2], xtest<0)
+            if (ytest >= y0) and (ytest <= y3):
+                xseg, yseg = BinMul._branch_points(r, n, max_arclen, xs[i:i + 2], xtest < 0)
                 x, y = np.concatenate((x, xseg)), np.concatenate((y, yseg))
         return x, y
 
