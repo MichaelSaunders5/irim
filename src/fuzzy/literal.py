@@ -1,4 +1,4 @@
-""":class:`.FuzzyNumber`\\ s defined by a parameterized Python method."""
+""":class:`.FuzzyNumber`\\ s defined by a parameterized Python method.  [TODO: review these docs.]"""
 
 from __future__ import annotations
 

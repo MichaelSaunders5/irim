@@ -7,6 +7,8 @@ numerical representation might include both a sampled continuous function and a 
 
 The :class:`Interpolator` class provides a selection of interpolation algorithms in one handy interface.
 
+  [TODO: review these docs.]
+
 """
 from __future__ import annotations
 

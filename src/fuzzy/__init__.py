@@ -16,7 +16,7 @@ making reasoning with it computable.  It automates the type of judgement and beh
 adept.  It is good at dealing with imprecise or incomplete information, conflicting rules, opinions, systems
 of heuristics, vague notions, subtle influences, nuance, personal preference, ambiguity, combined ideas, style,
 perceptual data, subjective experience, whims, and fancies.  All of this is in addition to a perfectly fine ability
-to work with hard facts and precision---the fuzzy is a superset which includes the crisp.
+to work with hard facts and precision---the fuzzy is a superset that includes the crisp.
 
 Crisp logic is concerned with a domain of truth that can take only two values: {0,1}, absolute falsehood or
 absolute truth.  Fuzzy logic extends this to include the infinite degrees of truth in-between---its domain
@@ -105,7 +105,7 @@ Built-in Literal Numbers
 ------------------------
 
 Using arbitrary functions to represent fuzzy numbers makes the package extremely powerful, but arbitrary functions
-allow so much freedom that it is difficult to speak of them in directly.  As users, we need simple and intuitive ways
+allow so much freedom that it is difficult to speak of them directly.  As users, we need simple and intuitive ways
 for stating "literal" fuzzy numbers.  The :mod:`.literal` module provides this with a variety of classes for defining
 fuzzy numbers parametrically:
 
@@ -178,7 +178,7 @@ a Python method, use :class:`.Literal`.  If you know about certain important poi
 data, but not a detailed mathematical function, use :class:`.CPoints`.  If it's discrete, and you know the points that
 matter or can determine them algorithmically, use :class:`.DPoints`.
 
-First, you must implement your class's ``__init__`` method.  BinAdd to it the parameters that shape your function.
+First, you must implement your class's ``__init__`` method.  Add to it the parameters that shape your function.
 If you're subclassing :class:`.DPoints` or :class:`.CPoints`, you'll set
 your points in it as well.  Finally, remember to call the superclass's constructor in your
 own: ``super().__init__(...)``.
@@ -432,9 +432,9 @@ Suitability
 ===========
 
 I've always thought of the unit of the fuzzy number function as "suitability":  among all possible values of a number,
-it says how suitable each is for an intended purpose.  In this documentation, I call it a "truth" and avoided the
-terms "suitability" and "fit" (for fuzzy unit, [0,1]) because I thought they might lead to confusion.
-At this point though, I think it's illustrative.
+it says how suitable each is for an intended purpose (and so, variables embody facts and intentions).  In this
+documentation, I've called it a "truth" and avoided the terms "suitability" and "fit" (for fuzzy unit, [0,1]) because
+I thought they might lead to confusion.  At this point though, I think it's illustrative.
 
 Suppose you have performed some fuzzy reasoning that results in a crisp answer.  How good is it?  The fuzzy number's
 truth at its crisp value is a measure of that.  Now is a good time to check it.  You can find the truth for any
@@ -620,7 +620,7 @@ sufficient, but I want to avoid oscillations between them.
 
 For logical operators, every value in the combined :math:`D_p` of
 the operands results in a new exceptional point with a truth that is the result of operating on :meth:`.Literal.t`
-evaluations of all operands, i.e., The truth of at any exceptional point in the result is the result of operating on
+evaluations of all operands, i.e., The truth of any exceptional point in the result is the result of operating on
 the truths at that value in all the operands, whether they come from :math:`D_p`, :math:`D_c`, or :math:`D_e`.
 
 Similarly, for every :math:`D_c` in the result, its samples are the result of operating on truths from
@@ -721,7 +721,7 @@ extent that it is true.  At each point along the line, we may say "it is this on
 
 Now we can calculate the truth of any result.  It is the or-integral along the line that describes the result over
 the Cartesian product of the operands, using the truth of one operand **and** the other.  We must take care though,
-that the or-integral proceeds through the line giving equal attention to each point.  So, the line must be described
+that the or-integral proceeds through the line giving equal attention to each point.  So, the line should be described
 parametrically and that parameter mapped so that its first derivative is constant---the or-integral proceeds at
 an uniform pace over the line.  I.e., the sample points across the line are uniformly-spaced by
 arc length;  Chebyshev points are not used in this application.
@@ -781,10 +781,14 @@ of a non-zero elsewhere?  I can think of two:
 The Operators
 -------------
 
-Addition is our model.  Multiplication is defined by the addition of logs.  Subtraction is recast as the addition of
-the first operand to the negation of the second.  Division is recast as the multiplication of the first operand by the
-reciprocal of the second.  Associative operations (those that can take more than two operands) are simply computed
-as chains of binary operation.
+Addition and multiplication are our models.  In addition, a uniform sampling of the result line is easy.
+In multiplication, where the result line is a hyperbola, it is fiendishly difficult because there is no simple
+analytical expression for the arc length.  In this case, the sampling is accomplished by an approximation:
+1. for each branch of the hyperbola in range, a diagonal line connecting its in-range endpoints is constructed;
+2. uniformly spaced perpendiculars to this line cut the hyperbolic result line, finding sample points.  The resulting
+approximation appears to be good enough.   Subtraction is recast as the addition of the first operand to the negation
+of the second.  Division is recast as the multiplication of the first operand by the reciprocal of the second.
+Associative operations (those that can take more than two operands) are simply computed as chains of binary operation.
 
 
 The Or-integral

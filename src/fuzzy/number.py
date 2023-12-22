@@ -1,5 +1,8 @@
 """applies the idea of fuzzy truth to the representation of numbers.
 
+[The following needs to be re-written!!!  The module structure now depends on FuzzyNumber and _Numerical.]
+  [TODO: review these docs.]
+
 Introduction
 ------------
 

@@ -2,7 +2,8 @@
 
 The fundamental fuzzy operators are *t-norms* and *co-norms*.
 Don't worry if you aren't familiar with these terms.  You don't need to choose a particular norm---the default
-is probably all you will ever need.  The :class:`Norm` classes perform all the calculations
+is probably all you will ever need.  The :class:`Norm` classes perform all the logic calculations used by the other
+classes.  Users do not need to use norm objects or their methods directly.
 
 
 The abstract class :class:`Norm` provides the method:
@@ -13,7 +14,6 @@ and guarantees the provision of:
 
     * :meth:`.Norm.and_` (∧, *t-norm*),
     * :meth:`.Norm.or_` (∨, *co-norm*);  and their integral forms:
-    * :meth:`.Norm._and_integral`
     * :meth:`.Norm._or_integral`.
 
 For :meth:`.Norm.not_`, only the standard fuzzy negation, ¬s=1-s, is used.  It is the only choice
@@ -23,10 +23,11 @@ implies the definition of the third.  Therefore, every t-norm unambiguously impl
 so concrete subclasses of :class:`.Norm` should implement a :meth:`.Norm.and_` and :meth:`.Norm.or_`
 that are properly related.
 
-The integral forms will probably only ever be used privately, within the fuzzy arithmetic operators that require them.
-I call them "integrals" by analogy with Riemann and product integrals, which respectively sum and multiply an
-infinitude of infinitesimal numbers---these logical integrals do the same with an infinitude of fuzzy truths.
-They should be directly analogous to their discrete counterparts, :meth:`.Norm.and_` and :meth:`.Norm.or_`.
+The integral form will probably only ever be used privately, within the fuzzy arithmetic operators that require it.
+I call it an "integral" by analogy with Riemann and product integrals, which respectively sum and multiply an
+infinitude of infinitesimal numbers---the logical or-integral does the same with an infinitude of fuzzy truths.
+It should be directly analogous to its discrete counterpart, :meth:`.Norm.or_`.  (It would be easy, for completeness,
+to create analogous "integrals" for the other logical connectives, but this is the only one I need at present.)
 
 The logic operators can operate on ``float`` or :class:`numpy.ndarray` objects with the usual presumption of range
 on [0,1].  The purpose of the :class:`numpy.ndarray` functionality is to support operations in the :class:`Value`
@@ -125,8 +126,8 @@ class Norm(ABC):
 
         Returns:
             A :class:`Norm` object which has methods for the three fundamental fuzzy logic
-            operators:  :meth:`not_`, :meth:`and_`, :meth:`or_` (and for the two private
-            operators:  :meth:`_and_integral` and :meth:`_or_integral`).
+            operators:  :meth:`not_`, :meth:`and_`, :meth:`or_` (and for the private
+            operator :meth:`_or_integral`).
 
         Example:
             | ``n = Norm(norm="pp")``
@@ -264,7 +265,7 @@ class Norm(ABC):
 
     # I used to think the following:
     # I'll also define And- and Or-integrals (like and-ing or or-ing every point of a function together).
-    # I only need the _or_integral for fuzzy arithmetic, but I'm defining the _and_integral for completeness.
+    # I only need the _or_integral for fuzzy arithmetic, but I could define the _and_integral for completeness.
     # many of these implementations will require:
     #     s = np.trapz(z) / line_length                       # the definite (Riemann) line integral
     #     p = exp(np.trapz(np.log(z))) / line_length          # the definite geometric (product) line integral
