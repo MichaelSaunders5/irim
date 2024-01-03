@@ -36,33 +36,57 @@ The class provides many methods and overloaded operators for working with logic:
     * :meth:`.Truth.nimp` (:math:`\\nrightarrow`, non-implication, ``~(a >> b)``) [0010], and
     * :meth:`.Truth.ncon` (:math:`\\nleftarrow`, non-converse implication, ``~(a << b)``) [0100].
 
-  All eleven logical connective methods can be defined by a :class:`Norm` optionally given in the call;
+  All eleven logical connective methods can be defined by a :class:`.Norm` optionally indicated in the call;
   otherwise, they use the :attr:`fuzzy.norm.default_norm` by default.
 
 * The six comparisons: ``<``, ``>`` , ``<=``, ``>=``, ``==``, ``!=``.
-
-* A :meth:`.weight` method, for emphasizing or deëmphasizing the contribution of a truth to whatever expression
-  it is in---equivalent to partially defuzzifying or refuzzifying it.
+* A :meth:`.weight` method (``a // w``), for emphasizing or deëmphasizing the contribution of a truth to whatever
+  expression it is in---equivalent to partially defuzzifying or refuzzifying it.
 * Two methods for making final decisions---"defuzzifying" the *fuzzy* :class:`Truth` to a *crisp* ``bool``
   by comparing it to a threshold:
 
     * :meth:`.Truth.crisp`, which allows the threshold to be given in the call, or
-    * :func:`.bool`, which refers to a global default:  :attr:`.Truth.default_threshold`.
+    * ``bool()``, which refers to a global default:  :attr:`fuzzy.truth.default_threshold`.
 
   (Consider, though:  the best solution to your problem mightn't be crisp,
   but a variable mapped from the nuanced, ineffably beautiful, fuzzy truth.)
 
 Note:
-    As described above, six Python operators are overloaded: ``~``, ``&``, ``|``, ``>>``, ``<<``, ``@``.
-    So, for example, ``a & b`` is equivalent to ``a.and_(b)``.  They function as :class:`.Truth` methods
-    as long as one of their operands is a :class:`.Truth` object.
+    As described above, six Python operators are overloaded for logic: ``~``, ``&``, ``|``, ``>>``, ``<<``, ``@``.
+    So, for example, ``a & b`` is equivalent to ``Truth.and_(a, b)`` and ``a.and_(b)``.  The method forms can take an
+    optional argument: keywords defining the norm.  This will override the default norm for
+    the operator and any expressions contained in its operands, unless they contain their own norm arguments.
 
-    Additionally, the  :meth:`.weight` method overloads ``^``.  (N.B.: in :mod:`.value` it is overloaded by
-    :meth:`Value.focus`.)  Its first operand must be a :class:`.Truth` object.  Its second can be the usual weight
-    parameter on [-100,100], but if it is a :class:`.Truth` as well, it is translated onto that range.
+    For the operands of the above, we may use :class:`.Truth`, :class:`.FuzzyNumber`, and built-in Python numerical
+    types (``float``, ``int``, ``bool``, or :class:`numpy.ndarray`\\s of them) interchangeably without worrying too much
+    about it---a system of automatic promotions handles this intuitively.  Since an analogous set of logic operators
+    exist for fuzzy numbers, the presence of a :class:`.FuzzyNumber` operand in an expression will promote the entire
+    expression to one of fuzzy arithmetic.  Because the :class:`.FuzzyNumber` class has some methods with similar names,
+    and because the numerical methods do not, there is some danger of confusion that the following points should
+    clarify:
 
-    Overriding supersedes the usual behavior of the operators.  Internal checks could avoid that, but I don't think
-    it is worthwhile for such rare functions---I doubt they will be needed in the same scope.
+    * In calls of the form ``Truth.and_(a, b)``, a :class:`.Truth` method is indicated explicitly.
+    * In calls of the form ``a.and_(b)``, ``a`` must be a :class:`.Truth` object for a :class:`.Truth` method to
+      be indicated.  (If ``a`` is a :class:`.FuzzyNumber`, then a method from that class is indicated;  if ``a`` is
+      a numerical type, an error will result, because those types have no such method.)
+    * In expressions of the form ``a & b`` (i.e., with overloaded operators), at least one of the operands must be
+      a :class:`.Truth` object for a :class:`.Truth` method to be indicated.  (But, if one is a :class:`.FuzzyNumber`,
+      the method from that class will be used;  if *both* operands are numerical, the operator retains its meaning from
+      standard Python.)
+    * In the above, numerical operands on [0,1] are treated as :class:`.Truth` objects.
+    * Numerical operands outside [0,1] become :class:`.Exactly` objects---fuzzy numbers only true at a single value.
+      This, in turn, forces all the operators in the expression to be interpreted as :class:`.FuzzyNumber` methods,
+      and the result will be a :class:`.FuzzyNumber` object.
+    * The :meth:`.Truth.not_` method and its overloaded operator, ``~``, are unary.  The methods :meth:`.Truth.and_`
+      and :meth:`.Truth.or_` are associative---so they may take any number of operands (zero or more).  The other
+      logical methods, and all other overloaded operators are strictly binary.
+    * Operands of :class:`numpy.ndarray` allow many logic operations to be carried out in a single call---by one
+      truth on all elements or element-wise between two arrays of the same length.  This functionality was included
+      mainly for the convenience of :class:`.FuzzyNumber` operators, but it may be useful more broadly.
+
+    Additionally, the  :meth:`.weight` method overloads ``//``.  Its first operand must be a :class:`.Truth` object.
+    Its second can be the usual weight parameter, a ``float`` on [-100,100], but if it is a :class:`.Truth` as well,
+    it is translated onto that range (i.e., so that truth {0, .5, 1} becomes parameter {-100, 0 , 100}).
 
     You may have noticed that trivial truth tables are not implemented.
     They are:  contradiction [0000], tautology [1111];
@@ -73,15 +97,14 @@ Caution:
     * In keeping with the weak-typing spirit of Python, the presumption of validity (range restricted to [0,1]) is not
       checked or enforced unless the user does so explicitly, with the methods :meth:`.is_valid`, :meth:`.clip`,
       or the constructor argument ``clip=True``.
-    * Operands (the arguments of the logical connectives) may be
-      :class:`Truth` | float | int | bool | :class:`numpy.ndarray`, with the usual assumption of validity.
-    * Although operands may be :class:`numpy.ndarray`, this is intended for private use by :class:`Value`.
+    * Operands (the arguments of the logical connectives) may be of types
+      :class:`Truth` | ``float`` | ``int`` | ``bool`` | :class:`numpy.ndarray`, with the usual assumption of validity.
     * Remember that, while the arguments of logical connectives may be of various types, they may only be called on
       :class:`Truth` objects, so, e.g., if ``a = Truth(.5)`` and ``b = .5``, then ``a.and_(b)`` works,
       but ``b.and_(a)`` fails.
     * The :meth:`Truth.and_` and :meth:`Truth.or_` methods may take zero or more arguments, because they are
       associative (although their overloaded operators, ``&`` and ``|``, are strictly binary).
-      The other binary methods must take exactly one argument or an error will result.
+      The other binary methods must take exactly two arguments or an error will result.
       Yes, :meth:`.Truth.iff` and :meth:`.Truth.xor` are mathematically associative, but, in these
       cases, "a * b * c" is too easily mistaken for the more desirable "(a * b) ∧ (b * c)" or "(a * b) * (b * c)",
       none of which are equivalent, so their programmatic associativity is disallowed to avoid confusion.
@@ -109,23 +132,26 @@ import fuzzy.norm
 
 TruthOperand = Union[float, np.ndarray, int, bool, 'Truth']
 """A type indicating {:class:`Truth` | ``float`` | ``int`` | ``bool`` | :class:`numpy.ndarray`}.  
-Arrays are intended for private use by :class:`Value`.  The range of values is presumed to be on [0,1]."""
+The range of values is presumed to be on [0,1]."""
 
 default_threshold: float = .5
-"""The default threshold for defuzzification, used by :meth:`crisp` and ``bool()``.   It is also 
-the point of inflection for the :meth:`weight` method, and the default value for ``Truth`` objects.  
-It should be what you consider as exactly "maybe".  It may be set directly.  
+"""The default threshold for defuzzification, used by :meth:`.Truth.crisp` and ``bool()``.   
+
+It is also the point of inflection for the :meth:`.weight` method, and the default value for ``Truth`` objects.  
+It should be the number on [0,1] that you consider to be exactly "maybe".  It may be set directly or 
+by :meth:`fuzzy.operator.fuzzy_ctrl` with the keyword ``threshold=``, e.g., ``fuzzy.truth.default_threshold = .8`` 
+and ``fuzzy.operator.fuzzy_ctrl(threshold=.8)`` have the same effect.
 I like the intuitive default of .5 because it gives equal scope and resolution to either side of "maybe"."""
 
 
 def _prepare_norm(**kwargs) -> Norm:
-    """Use if available, in order of preference, keyword parameters, a given norm, or the default norm.
+    """A helper used in logical operator methods to get a norm defined by
+    keyword parameters, or left undefined, the default norm.
     """
     kw = kwargs.get('norm', getattr(fuzzy.norm, 'default_norm'))
     if isinstance(kw, fuzzy.norm.Norm):
         return kw
-    else:
-        return fuzzy.norm.Norm.define(**kw)
+    return fuzzy.norm.Norm.define(**kw)
 
 
 def _promote_and_call(a, b, t_name: str, fn_name: str):
@@ -133,7 +159,7 @@ def _promote_and_call(a, b, t_name: str, fn_name: str):
 
     This exists so that we may use :class:`.Truth`, :class:`.FuzzyNumber`, and built-in Python numerical types
     (``float``, ``int``, ``bool``) interchangeably in overloaded fuzzy expressions without worrying too much about it.
-    An analogous function exists in :mod:`operator`, to deal with :class:`.FuzzyNumber` operations.
+    An analogous function exists in :mod:`fuzzy.operator`, to deal with :class:`.FuzzyNumber` operations.
 
     Here, in :mod:`truth`, the operators are all logical and one operand must be :class:`.Truth`, or we would not have
     arrived at this function (e.g., an operation on two ``float`s would be handled by Python in the usual way).
@@ -180,13 +206,14 @@ def _promote_and_call(a, b, t_name: str, fn_name: str):
     if isinstance(a, Truth) and isinstance(b, Truth):
         return eval("Truth." + t_name + "(a, b)")
     else:
-        from fuzzy.operator import Operator
         return eval("Operator." + fn_name + "(a, b)")  # Call the operator for FuzzyNumbers
 
 
 @dataclass
 class Truth(float):
-    """A fuzzy unit (or "fit"), representing a degree of truth.
+    """A fuzzy unit (a "fit"), representing a degree of truth.
+
+    It is represented as an immutable float presumed to be on [0,1].
     """
     # default_threshold: ClassVar[float] = .5.  I moved TruthOperand, default_threshold up there^.  Trouble???
     s: float = field(default=default_threshold)
@@ -207,11 +234,12 @@ class Truth(float):
 
         In general, a complete workflow might resemble the following:
 
-            #. You have a crisp variable, in some units, on a range of real numbers.
+            #. You have a crisp variable, in some units, on a range of real numbers.  (E.g., oven temperatures on
+               [70, 550]°F.)
             #. You map its range (expected or actual) to fuzzy units, [0,1].
             #. You do fuzzy reasoning and calculation with it.
             #. Finally, you translate the result from fuzzy units back into crisp units by a mapping
-               that inverts the original one.
+               that inverts the original one.  (E.g., a truth result of .71 becomes 411°F.)
 
         Of course, the first two steps might well be imaginary.
 
@@ -232,14 +260,15 @@ class Truth(float):
                     If the range has zero width, three results are possible:
 
                         * x<r:  -∞
-                        * x=r:  :attr:`.default_threshold`,
+                        * x=r:  :attr:`default_threshold`,
                         * x>r:  ∞
 
-                    If ``clip`` is ``True`` this becomes {0, :attr:`.default_threshold`, 1}.
+                    If ``clip`` is ``True`` this becomes {0, :attr:`default_threshold`, 1}.
 
                 Automatic Input: : ``dir="in"``, ``r`` not declared (``= None``):
                     The range is set to the actual range found in ``x``, so the input is normalized to fill [0,1].
-                    If ``x`` does not vary (e.g., if it is a single float), the result is :attr:`.default_threshold`.
+                    If ``x`` does not vary (e.g., if it is a single float), the result
+                    is :attr:`default_threshold`.
 
                 In any mode:
                     In normal operation, the width of ``r`` is non-zero and positive.  If it is negative (min > max),
@@ -386,10 +415,12 @@ class Truth(float):
         """The negation ("not", ¬) unary operator [10].
 
         The truth of such expressions as, "``self`` is not so".
-        It may be accessed by ``s.not_()`` or ``~s``.
+        It may be accessed by ``Truth.not_(a)``, or ``a.not_()``, or ``~a``.
 
-        Arg:
-            norm: an optional norm.  The default is :attr:`Norm.default_norm`
+        Keyword Parameters:
+            An optional :class:`.Norm` defined by keywords.  See :meth:`.Norm.define`.
+            (N.B.: in the case of this operator, the calculation will probably always be the same for all
+            norms, :math:`1 - t`, the standard fuzzy negation.)
 
         Returns:
             The opposite of ``self``, the extent to which ``self`` is false."""
@@ -421,6 +452,7 @@ class Truth(float):
     # The 3 Boolean operators (not, and, or) cannot be overloaded---they're stuck in the crisp world, for the best,
     # since that functionality is a little different.
     # In Python ^ is bitwise xor, but I'm not using it here because I'll need it for the sharpening (focus) operator.
+    # I decided to add floor division, //, for weight as well.
 
     # First, the basic functions that provide the calculation via the `default_norm`:
     # and_, or_, imp_, con_, iff_, xor_;  nand_, nor_, nimp_, ncon_:
@@ -429,10 +461,13 @@ class Truth(float):
         """The conjunction ("and", ∧) binary operator [0001].
 
         The truth of such expressions as, "both ``self`` and ``other``".  
-        It may be accessed by ``a.and_(b...)`` or ``a & b``.
+        It may be accessed by ``Truth.and_(a, b,...)``, or ``a.and_(b,...)``, or ``a & b``.
 
         Args:
-            other: zero or more :attr:`TruthOperand`, since the operation is associative.
+            other: zero or more :attr:`TruthOperand`\\s, since the operation is associative.
+
+        Keyword Parameters:
+            An optional :class:`.Norm` defined by keywords.  See :meth:`.Norm.define`.
 
         Returns:
             The conjunction of ``self`` and ``other``, the extent to which they are both true
@@ -447,10 +482,13 @@ class Truth(float):
         binary operator [0111].
 
         The truth of such expressions as, "either ``self`` or ``other``".  
-        It may be accessed by ``a.or_(b...)`` or ``a | b``.
+        It may be accessed by ``Truth.or_(a, b,...)``, or ``a.or_(b,...)``, or ``a | b``.
 
         Args:
-            other: zero or more :attr:`TruthOperand`, since the operation is associative.
+            other: zero or more :attr:`TruthOperand`\\s, since the operation is associative.
+
+        Keyword Parameters:
+            An optional :class:`.Norm` defined by keywords.  See :meth:`.Norm.define`.
 
         Returns:
             The disjunction of ``self`` and ``other``, the extent to which either or both is true
@@ -464,10 +502,13 @@ class Truth(float):
         """The material implication ("imply", →) binary operator [1101], the converse of :meth:`con`.
 
         The truth of such expressions as, "``self`` implies ``other``", or "if ``self`` then ``other``".  
-        It may be accessed by ``a.imp(b)`` or ``a >> b``.
+        It may be accessed by ``Truth.imp(a, b)``, or ``a.imp(b)``, or ``a >> b``.
 
         Args:
             other: one :attr:`TruthOperand`, since the operation is binary.
+
+        Keyword Parameters:
+            An optional :class:`.Norm` defined by keywords.  See :meth:`.Norm.define`.
 
         Returns:
             The implication of ``self`` to ``other``, the extent to which ``self`` must result in ``other``."""
@@ -480,10 +521,13 @@ class Truth(float):
         """The converse implication ("con", ←) binary operator [1011], the converse of :meth:`imp`.
 
         The truth of such expressions as, "``other`` implies ``self``", or "if ``other`` then ``self``".  
-        It may be accessed by ``a.con_(b)`` or ``a << b``.
+        It may be accessed by ``Truth.con(a, b)``, or ``a.con(b)``, or ``a << b``.
 
         Args:
             other: one :attr:`TruthOperand`, since the operation is binary.
+
+        Keyword Parameters:
+            An optional :class:`.Norm` defined by keywords.  See :meth:`.Norm.define`.
 
         Returns:
             The implication of ``other`` to ``self``,
@@ -500,10 +544,13 @@ class Truth(float):
 
         The truth of such expressions as, "``self`` and ``other`` imply each other", or
         "``self`` and ``other`` are true only to the same extent".  
-        It may be accessed by ``a.iff(b)`` or ``~(a @ b)``.
+        It may be accessed by ``Truth.iff(a, b)``, or ``a.iff(b)``, or ``~(a @ b)``.
 
         Args:
             other: one :attr:`TruthOperand`, since the operation is binary.
+
+        Keyword Parameters:
+            An optional :class:`.Norm` defined by keywords.  See :meth:`.Norm.define`.
 
         Returns:
             The equivalence of ``self`` and ``other``, the extent to which they have the same degree of truth,
@@ -520,10 +567,13 @@ class Truth(float):
         It is familiar in Electronics as "xor".
 
         The truth of such expressions as, "either ``self`` or ``other``, but not both together".  
-        It may be accessed by ``a.xor(b)`` or ``a @ b``.
+        It may be accessed by ``Truth.xor(a, b)``, or ``a.xor(b)``, or ``a @ b``.
 
         Args:
             other: one :attr:`TruthOperand`, since the operation is binary.
+
+        Keyword Parameters:
+            An optional :class:`.Norm` defined by keywords.  See :meth:`.Norm.define`.
 
         Returns:
             The non-equivalence of ``self`` and ``other``, the extent to which their degrees of truth differ,
@@ -537,10 +587,13 @@ class Truth(float):
         """The alternative denial ("nand", ↑) binary operator [1110], the inverse of :meth:`and_`.
 
         The truth of such expressions as, "``self`` and ``other`` cannot occur together".
-        It may be accessed by ``a.nand(b)`` or ``~(a & b)``.
+        It may be accessed by ``Truth.nand(a, b)``, or ``a.nand(b)``, or ``~(a & b)``.
 
         Args:
             other: one :attr:`TruthOperand`, since the operation is binary.
+
+        Keyword Parameters:
+            An optional :class:`.Norm` defined by keywords.  See :meth:`.Norm.define`.
 
         Returns:
             The inverse conjunction of `self` and ``other``, the extent to which they are not both true."""
@@ -553,10 +606,13 @@ class Truth(float):
         """The joint denial ("nor", ↓) binary operator [1000], the inverse of :meth:`or_`.
 
         The truth of such expressions as, "neither ``self`` nor ``other``".
-        It may be accessed by ``a.nor(b)`` or ``~(a | b)``.
+        It may be accessed by ``Truth.nor(a, b)``, or ``a.nor(b)``, or ``~(a | b)``.
 
         Args:
             other: one :attr:`TruthOperand`, since the operation is binary.
+
+        Keyword Parameters:
+            An optional :class:`.Norm` defined by keywords.  See :meth:`.Norm.define`.
 
         Returns:
             The inverse disjunction of ``self`` and ``other``, the extent to which both are false."""
@@ -571,10 +627,13 @@ class Truth(float):
 
         The truth of such expressions as, "``self`` does not imply ``other``", or "if ``self`` then not ``other``";
 
-        It may be accessed by ``a.nimp(b)`` or ``~(a >> b)``.
+        It may be accessed by ``Truth.nimp(a, b)``, or ``a.nimp(b)``, or ``~(a >> b)``.
 
         Args:
             other: one :attr:`TruthOperand`, since the operation is binary.
+
+        Keyword Parameters:
+            An optional :class:`.Norm` defined by keywords.  See :meth:`.Norm.define`.
 
         Returns:
             The nonimplication of ``self`` to ``other``; the extent to which ``self`` suppresses or inhibits ``other``;
@@ -589,10 +648,13 @@ class Truth(float):
         the inverse of :meth:`con`.
 
         The truth of such expressions as, ``other`` does not imply ``self``", or "if ``other`` then not ``self``".  
-        It may be accessed by ``a.ncon(b)`` or ``~(a << b)``.
+        It may be accessed by ``Truth.ncon(a, b)``, or ``a.ncon(b)``, or ``~(a << b)``.
 
         Args:
             other: one :attr:`TruthOperand`, since the operation is binary.
+
+        Keyword Parameters:
+            An optional :class:`.Norm` defined by keywords.  See :meth:`.Norm.define`.
 
         Returns:
             The non-implication of ``other`` to ``self``,
@@ -604,13 +666,13 @@ class Truth(float):
 
     # One more binary operator peculiar to fuzzy technique:  weight:
 
-    def weight(self, w: float) -> Truth:
+    def weight(self, w: Union[Truth | float]) -> Truth:
         """Emphasizes or deëmphasizes a :class:`Truth`.
 
         One may think of a weight as a partial de-fuzzification (or, if ``w<0``, a partial fuzzification).
-        It may be accessed by ``s.weight(w)`` or ``(s^w)``.
+        It may be accessed by ``Truth.weight(t, w)``, or ``t.weight(w)``, or ``(t // w)``.
 
-        Use if you want to modify a truth's contribution to whatever expression it's in.
+        Use weighting when you want to modify a truth's contribution to an expression.
         It applies a sigmoid transfer function to the truth's value.
         If the parameter, ``w``, is negative (de-emphasis), results tend to the :attr:`default_threshold`.
         If it is positive (emphasis), they tend to 0 or 1, depending which side of the threshold they are on.
@@ -645,21 +707,24 @@ class Truth(float):
             if ``w<0``) by the weight, ``w``.
 
         Note:
-            * Because the ``^`` operator inherits very low precedence from Python, it is advised to enclose the
-              weighted term in parentheses.
-            * Concerning the weight operand used with the overloaded operator, ``^``:  if it is a ``float``, it is
-              treated no differently than in function call ``s.weight(w)``.  However, if it is a :class:`.Truth`
-              object, its value on [0,1] is scaled to [-100,100] linearly, so that, e.g., .5 becomes 0.
-              This is so :class:`.Truth`-valued expressions might conveniently be used as weights.
+
+            Concerning the weight operand used with the overloaded operator, ``//``:  if it is a ``float``, it is
+            treated no differently than in function call ``s.weight(w)``.  However, if it is a :class:`.Truth`
+            object, its value on [0,1] is scaled to [-100,100] linearly, so that, e.g., .5 becomes 0.
+            This is so :class:`.Truth`-valued expressions might conveniently be used as weights.
 
               """
         th = .5 if default_threshold <= 0 or default_threshold >= 1 else default_threshold
-        k = -3.912023005428146 / np.log(.0096 * abs(w) + .02)
+        if isinstance(w, Truth):
+            w = w.to_float(range=(-100, 100))
+        k = -3.912023005428146 / np.log(.0096 * abs(w / 10) ** 2 + .02)
         k = 1 / k if w < 0 else k
-        if self.s <= th:
-            return Truth(th * (self.s / th) ** k)
+        s = self.s if isinstance(self, Truth) else self
+        r = np.where(s <= th, th * (s / th) ** k, 1 - (1 - th) * ((1 - s) / (1 - th)) ** k)
+        if isinstance(r, float):
+            return Truth(r)
         else:
-            return Truth(1 - (1 - th) * ((1 - self.s) / (1 - th)) ** k)
+            return r
 
     # Two methods for making a decision (defuzzification):
 
@@ -667,7 +732,7 @@ class Truth(float):
         """Decides the crisp value of a fuzzy truth on the basis of ``threshold``.
 
             Args:
-                threshold:  Presumably on [0,1].  If the ``Truth`` is as true as this, we can call it "true".
+                threshold:  Presumably on [0,1].  If ``self`` is as true as this, we can call it "True".
 
             Returns:
                 The crisp version of a fuzzy truth, a defuzzification of its logical proposition,
@@ -691,7 +756,7 @@ class Truth(float):
         return Truth.crisp(self)
 
     # Operator symbol overrides:  these are for the most common operators that have a suitable overridable symbol:
-    # `~  &  |  >>  <<  @  ^` (not, and, or, implies, converse, weight).
+    # `~  &  |  >>  <<  @  //` (not, and, or, implies, converse, weight).
 
     def __invert__(self) -> Truth:
         """Overloads the unary ``~`` (bitwise not) operator."""
@@ -751,16 +816,11 @@ class Truth(float):
         Returns:
             A weighted version of ``self``.
         """
-        if isinstance(other, Truth):
-            other = other.to_float(range=(-100, 100))
         return Truth.weight(self, other)
 
     def __rfloordiv__(self, other: float) -> Truth:
         """Ensures that the overloading of ``//`` works as long as one operand is a ``Truth`` object."""
-        # This gets sent to the magic method version to deal with the truth scaling.
-        # s = self.to_float(range=(-100, 100)) if isinstance(self, Truth) else self
-        # return Truth.weight(Truth(float(other), clip=True), s)
-        return __floordiv__(Truth(self), other)
+        return Truth.weight(Truth(other), self)
 
     # a trivial point:
 

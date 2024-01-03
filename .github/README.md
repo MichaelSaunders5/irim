@@ -71,9 +71,7 @@ would like to become composers.
 
 So, many may wish to use Írim:
 
-> -   
->
->     Music professionals:
+> -  Music professionals:
 >
 >     :   -   Producers who want the facility of mixing in space.
 >         -   Composers with scores who want the facility of virtual
@@ -81,9 +79,7 @@ So, many may wish to use Írim:
 >         -   Composers who want a computer to aid their compositional
 >             tasks.
 >
-> -   
->
->     Souls with seeking hearts:
+> -   Souls with seeking hearts:
 >
 >     :   -   Musicians who sense that something greater is possible.
 >         -   Engineers who want to make music.

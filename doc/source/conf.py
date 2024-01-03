@@ -35,6 +35,12 @@ autoapi_options = ['members', 'show-inheritance', 'show-module-summary']
 autoapi_member_order = 'bysource'
 autoapi_python_class_content = 'both'
 
+autodoc_default_options = {
+    "members": True,
+    "undoc-members": True,
+    "private-members": True
+}
+
 napoleon_use_param = False  # Somehow, this line allows paragraphs in parameter descriptions.
 
 templates_path = ['_templates']

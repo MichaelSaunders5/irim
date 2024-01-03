@@ -25,10 +25,10 @@ Operand = Union[LogicOperand, MathOperand]  # = LogicOperand.  Not really used, 
 
 default_r_precision: int = 401
 """Related to the maximum number of samples taken for the longest line on the Cartesian product when sampling it 
-for results of arithmetic operations.  Shorter lines have fewer samples; in some situations (proximity to zero) it will
-be boosted.  Some operators, by their nature, may require a multiple of it.  Fearing numerical pathologies, 
-I keep it odd.  If it is set too low, the continuous results of fuzzy operators may look noisy, but it has 
-a strong effect on the speed  of operations.  The above value looked good to me in testing."""
+for results of arithmetic operations.  Shorter lines have fewer samples.  Some operators, by their nature, 
+may require a multiple of it.  Fearing numerical pathologies, I keep it odd.  If it is set too low, the continuous 
+results of fuzzy operators may look noisy, but it has a strong effect on the speed  of operations.  The above value 
+looked good to me in testing."""
 
 
 def _handle_defaults(**kwargs) -> Tuple:
@@ -71,7 +71,8 @@ def fuzzy_ctrl(**kwargs):
                     percentage" with ``'cnp'``---this weights the two together so that, e.g., ``'cnp':0`` is all n1,
                     and ``'cnp':100`` is all n2.
 
-            E.g., ``fuzzy_ctrl(norm={'n1': "str", 'n1p': 25})``.
+            E.g., ``fuzzy_ctrl(norm={'n1':"str", 'n1p':[-80], 'n2':"hhp", 'n2p':[20], 'cnp':70})`` specifies a
+            rather complex norm that turns out to have a strictness of -38.84.
             In order of increasing strictness, the norm codes are:
 
             +-------------+------------+-------------------------------------------------+
@@ -923,6 +924,7 @@ class Operator(FuzzyNumber, ABC):
         Returns:
             A weighted version of ``self``.
         """
+        print(f"in__floor, self/other: {self}  /  {other}")
         if isinstance(other, Truth):
             other = other.to_float(range=(-100, 100))
         return _promote_and_call(self, other, "weight")
@@ -930,6 +932,7 @@ class Operator(FuzzyNumber, ABC):
     def __rfloordiv__(self, other: float) -> Truth:
         """Ensures that the overloading of ``//`` works as long as one operand is a ``Truth`` object."""
         # This gets sent to the magic method version to deal with the truth scaling.
+        print(f"in__Rfloor, self/other: {self}  /  {other}")
         s = self.to_float(range=(-100, 100)) if isinstance(self, Truth) else self
         return _promote_and_call(other, s, "weight")
 
@@ -1160,7 +1163,7 @@ class MathOperator(Operator, ABC):
             for i, v in enumerate(cv):  # Someone better at Numpy might vectorize this.
                 x, y = self._line(a.cv[0], a.cv[-1], b.cv[0], b.cv[-1], v, r_precision, r_span)
                 t_at_each_xy = rgi((x, y))
-                ct[i] = n._or_integral(t_at_each_xy)
+                ct[i] = n.or_integral(t_at_each_xy)
         cn = 0 if cv is None else len(cv)
         cd = self.d_op(False, a.cd, b.cd)
         if (cd is not None) and (allowed_domain is not None):
@@ -1663,9 +1666,6 @@ class BinMul(MathOperator, BinaryOperator):
         and this must be handled in :meth:`.BinMul._line`, not here."""
         alims = np.array([safe_div(r[0], b[0]), safe_div(r[0], b[1]), safe_div(r[1], b[0]), safe_div(r[1], b[1])])
         blims = np.array([safe_div(r[0], a[0]), safe_div(r[0], a[1]), safe_div(r[1], a[0]), safe_div(r[1], a[1])])
-        print(f"r {r},  a {a},  b {b}")
-        print(f"alims {alims}")
-        print(f"blims {blims}")
         if a.contains(0):
             # blims = np.append(blims, (safe_div(r[0], 0), safe_div(r[1], 0)))
             # blims = np.append(blims, (a[0], a[1]))
@@ -1675,9 +1675,6 @@ class BinMul(MathOperator, BinaryOperator):
             # alims = np.append(alims, (b[0], b[1]))
             alims = np.array(r)
         alimit, blimit = Domain((np.min(alims), np.max(alims))), Domain((np.min(blims), np.max(blims)))
-
-        print(f"alimit, blimit {alimit, blimit}")
-        print(f"return: {a.intersection(alimit), b.intersection(blimit)}")
         return a.intersection(alimit), b.intersection(blimit)
 
     def _op(self, a: float, b: float) -> float:

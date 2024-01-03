@@ -356,9 +356,20 @@ the effect of changing the parameter is meant to be perceptually linear.
 
 :class:`.Truth` has only one type of qualifier: :meth:`.weight` (``a // w``, where ``w`` is the parameter).
 Weight makes a truth more or less extreme.
+You might think of ``a`` as the truth of a condition and ``w`` as its importance.
 A positive parameter pulls truths away from the :attr:`truth.default_threshold` towards either 0 or 1.
 A negative parameter pulls them away from the extremes and towards the threshold.
-This effect is really a partial "crisping" of the truth, as we shall see below.
+This effect is really a partial "crisping" (or anti-crisping) of the truth, as we shall see below.
+
+.. figure:: ../../images/logic_weight.png
+   :alt: how weight modifies truth
+
+   Weight is a transfer function that modifies the truth according to the parameter ``w``.  The graph shows the output
+   vs. the input truth for different values of ``w``.  At ``w==0`` (green), the original truth is unaffected.
+   For ``w>0`` (warm colors), truths become more extreme, approaching the behavior of the crisper.  For
+   ``w<0`` (cool colors), truths become less extreme, approaching a trinary logic of {False, Uncertain, True}.
+   In all cases, truths of {0, *threshold*, 1} remain unchanged.  In this graph, the threshold is the default, .5;
+   a change of threshold moves the central dot along the green line, warping all the other lines along with it.
 
 :class:`.FuzzyNumber` has three types of qualifier:
 
@@ -377,7 +388,7 @@ Imagine turning a number on its side and looking down on it.  If the truth corre
 makes the number sharper, clearer; negative focus makes it blurrier, less distinct.  As with weight, this is a
 partial crisping of the number.
 
-[pictures demonstrating the qualifiers]
+[pictures demonstrating the qualifiers on fuzzy numbers]
 
 Crisp Results
 =============
@@ -487,14 +498,14 @@ sophisticated computer program automating your own judgment.
 Rare Parameters
 ===============
 
-There are six rarely-needed parameters that can be given to some methods.  Usually they are not of interest, and one
+There are seven rarely-needed parameters that can be given to some methods.  Usually they are not of interest, and one
 allows them to be set automatically by global defaults---module attributes that act like environment variables
-for the :mod:`fuzzy` package.  In method calls they are indicated by a uniform system of keyword arguments.
+for the :mod:`fuzzy` package.  In method calls they can be indicated by a uniform system of keyword arguments.
 In fuzzy expressions, settings on an operator propagate downward to all the operands it owns, and so on, unless it
 contains an operator with another explicit setting.
 
-The same keyword arguments can be used to set the module attributes using the :func:`.fuzzy_ctrl` function.
-The :func:`.fuzzy_ctrl_show` function prints them to the terminal for inspection.
+The same keyword arguments can be used to set the module attributes---the current global defaults---using
+the :func:`.fuzzy_ctrl` function.  The :func:`.fuzzy_ctrl_show` function prints them to the terminal for inspection.
 
 The module attributes are:
 
@@ -516,6 +527,10 @@ The module attributes are:
     :attr:`fuzzy.number.default_resolution`
         Is used only by ``float()``.  When crisping, you really ought to give the resolution you need, because only
         you know the units of value you have in mind, and numerical methods without an error bound are meaningless.
+    :attr:`fuzzy.operator.default_r_precision`
+        Is an integer number of sample points used internally in calculations of the continuous parts of binary
+        arithmetic operators.  A larger value is slower but more accurate (avoiding noise in the numerical
+        representation of fuzzy numbers).  The default is probably plenty.
 
 This syntax of ``kwarg`` parameters is described in  :func:`.fuzzy_ctrl`.
 
@@ -901,6 +916,13 @@ of interest in its operands, and communicate that to them.  When the calls final
 is time for them to sample themselves, they will only sample the subdomain of their defined domain that would have
 a result in the ultimate domain you have requested.  Therefore, all the precision and calculation is efficiently
 focused only on the regions where it will matter.
+
+
+Further Reading
+===============
+
+If you wish to learn more about how the package works, read the documentation of the modules in this order:
+:mod:`.norm`, :mod:`.truth`, :mod:`.number`, :mod:`.literal`, :mod:`.operator`, :mod:`.crisp`.
 
 """
 __all__ = ["norm", "truth", "number", "literal", "operator", "crisp"]

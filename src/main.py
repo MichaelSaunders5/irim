@@ -1,28 +1,62 @@
 # Here is where I am testing or playing around or something.
 # from fuzzy.operator import *
 
-from numpy import *
+import numpy as np
 
 from fuzzy.literal import *
 from fuzzy.operator import *
+# from fuzzy.truth import *
 from math import log, exp
 
+
+
 # fuzzy_ctrl(norm={'n1':"str", 'n1p':[-80], 'n2':"hhp", 'n2p':[20], 'cnp':70})
-fuzzy_ctrl(norm={'n1': "pp"})       #  , r_precision=100000
+fuzzy_ctrl(norm={'n1': "mm"}, threshold=.5)       #  , r_precision=100000
 fuzzy_ctrl_show()
+n = Norm.define(n1="pp")
+a = Truth(.6)
+b = .6
+w = 50
+tw = Truth(.75)
+ta = np.linspace(0,1,5)
+
+
+print(f"t//f {a // w}")
+print(f"C tf {Truth.weight(a, w)}")
+print(f"tf {a.weight(w)}")
+
+print(f"t//t {a // tw}")
+print(f"C tt {Truth.weight(a, tw)}")
+print(f"tt {a.weight(tw)}")
+
+
+print(f"f//f {b // w}---bogus, because it's real floor division.")
+print(f"C ff {Truth.weight(b, w)}")   # make this work
+
+print(f"f//t {b // tw}")        # this thinks it's floor division, but it shouldn't be.
+print(f"C ft {Truth.weight(b, tw)}")
+
+print(f"ta {ta}")
+print(f"-100 {Truth.weight(ta, -100)}")
+print(f"-50 {Truth.weight(ta, -50)}")
+print(f"0 {Truth.weight(ta, 0)}")
+print(f"50 {Truth.weight(ta, 50)}")
+print(f"100 {Truth.weight(ta, 100)}")
 
 # t = Triangle(-.9,0.1,1.1, elsewhere=0, points=[(2, .8)])
 # a = Triangle(0, 2, 4, elsewhere=0)
-# b = Triangle(-2, 0, 2, elsewhere=0)
-a = Triangle(-1, 0, 2)
-b = Triangle(-2, 0, 1)
 
-c = a / b
-e = c._expression_as_numerical(.01, (-8,8))
-e.display()
-d = b / a
-f = d._expression_as_numerical(.01, (-4,4))
-f.display()
+
+# b = Triangle(-2, 0, 2, elsewhere=0)
+
+# a = Triangle(1, 2, 3)
+# b = Triangle(-1, 0, 1)
+# c = a / b
+# e = c._expression_as_numerical(.01, (-8,8))
+# e.display()
+# d = b / a
+# f = d._expression_as_numerical(.01, (-4,4))
+# f.display()
 
 # 2 * 0: some ripples about 0, but 1 at 0.
 # 0 * 2: same ripples, but dramatic divot: .93 at 0
@@ -607,3 +641,36 @@ f.display()
 #
 #
 # display_norms()
+
+# This block makes the logic_weight figure.
+# import matplotlib.pyplot as plt
+# import matplotlib.collections as mcol
+# from matplotlib.legend_handler import HandlerLineCollection, HandlerTuple
+# from matplotlib.lines import Line2D
+# px = 1 / plt.rcParams['figure.dpi']  # pixel in inches
+# plt.rcParams['figure.figsize'] = [px*800, px*800/1.618]
+# plt.rcParams["figure.autolayout"] = True
+# fig, ax = plt.subplots()
+# fig.patch.set_facecolor("#eee8d5")
+# ax.set_facecolor("#fdf6e3")
+# xpoints = np.linspace(0, 1, num=1000)
+# yn100 = Truth.weight(xpoints, -90)
+# yn66 = Truth.weight(xpoints, -60)
+# yn33 = Truth.weight(xpoints, -30)
+# yz0 = Truth.weight(xpoints, 0)
+# yp33 = Truth.weight(xpoints, 30)
+# yp66 = Truth.weight(xpoints, 60)
+# yp100 = Truth.weight(xpoints, 90)
+# lw = 2
+# l1 = ax.plot(xpoints, yn100, color='#6c71c4', linewidth=lw)
+# l2 = ax.plot(xpoints, yn66, color='#268bd2', linewidth=lw)
+# l3 = ax.plot(xpoints, yn33, color='#2aa198', linewidth=lw)
+# l4 = ax.plot(xpoints, yz0, color='#859900', linewidth=lw)
+# l5 = ax.plot(xpoints, yp33, color='#b58900', linewidth=lw)
+# l6 = ax.plot(xpoints, yp66, color='#cb4b16', linewidth=lw)
+# l7 = ax.plot(xpoints, yp100, color='#dc322f', linewidth=lw)
+# ax.legend(('w=-90','w=-60','w=-30','w=0','w=30','w=60','w=90'), loc='lower right')
+# xdots = np.array([0, .5, 1])
+# ydots = np.array([0, .5, 1])
+# plt.plot(xdots, ydots, 'o', color='#002b3688')
+# plt.show()
