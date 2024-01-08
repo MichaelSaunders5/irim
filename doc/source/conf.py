@@ -48,7 +48,8 @@ exclude_patterns = []
 
 imgmath_font_size = 10
 
-intersphinx_mapping = {'numpy': ('https://numpy.org/doc/stable/', None)}
+intersphinx_mapping = {'numpy': ('https://numpy.org/doc/stable/', None),
+                       'matplotlib': ('https://matplotlib.org/stable/', None)}
 #                        'python': ('https://docs.python.org/3', None)}   #not working 230820
 # 'scipy': ('https://docs.scipy.org/doc/scipy/', None),
 # 'matplotlib': ('https://matplotlib.org/stable/', None)

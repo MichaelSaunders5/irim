@@ -312,8 +312,10 @@ class Truth(float):
               ``"log"`` with ``"invlog"`` and ``"exp"`` with ``"invexp"``.
 
         Note:
-            * This method is used by :meth:`.Truth.__init__`, :meth:`.Truth.to_float`; :meth:`.Value.CPoints`,
-              :meth:`.Value.Dpoints`; and :class:`.Map`.
+            * This method is used by :meth:`.Truth.__init__`, :meth:`.Truth.to_float`; :meth:`.Literal.CPoints`,
+              :meth:`.DPoints.DPoints`; and :class:`.Map`.  It might be useful to you if you are dealing with raw data
+              or creating your own subclasses of :class:`.Literal` to represent parameterized fuzzy numbers.
+
             """
         if x is None:
             x = default_threshold
@@ -420,7 +422,7 @@ class Truth(float):
         Keyword Parameters:
             An optional :class:`.Norm` defined by keywords.  See :meth:`.Norm.define`.
             (N.B.: in the case of this operator, the calculation will probably always be the same for all
-            norms, :math:`1 - t`, the standard fuzzy negation.)
+            norms:  :math:`1 - t`, the standard fuzzy negation.)
 
         Returns:
             The opposite of ``self``, the extent to which ``self`` is false."""
@@ -697,9 +699,6 @@ class Truth(float):
                 beyond this.  The transfer function approaches a constant at :attr:`default_threshold`,
                 with exceptional points when the input is 0 or 1.
 
-                The size of the "in play" region varies linearly with ``w``.  At ``w==50``, it has a width of .5,
-                that is, inputs on (.25, .75)---covering 50% of the input range---yield outputs on (.01, .99).
-
                 (All of the above assumes that :attr:`default_threshold`  ``==.5``.)
 
         Returns:
@@ -708,15 +707,19 @@ class Truth(float):
 
         Note:
 
-            Concerning the weight operand used with the overloaded operator, ``//``:  if it is a ``float``, it is
-            treated no differently than in function call ``s.weight(w)``.  However, if it is a :class:`.Truth`
-            object, its value on [0,1] is scaled to [-100,100] linearly, so that, e.g., .5 becomes 0.
+            Concerning the weight operand:  if it is a ``float``, it is treated as above.  However, if it is
+            a :class:`.Truth` object, its value on [0,1] is scaled to [-100,100] linearly, so that, e.g., .5 becomes 0.
             This is so :class:`.Truth`-valued expressions might conveniently be used as weights.
 
               """
         th = .5 if default_threshold <= 0 or default_threshold >= 1 else default_threshold
         if isinstance(w, Truth):
             w = w.to_float(range=(-100, 100))
+        # The old formula made the in-play region vary linearly, as in the statement below:
+        # k = -3.912023005428146 / np.log(.0096 * abs(w)  + .02)
+        # The size of the "in play" region varies with ``w``.  At ``w==50``, it has a width of .5,
+        # that is, inputs on (.25, .75)---covering 50% of the input range---yield outputs on (.01, .99).
+        # But, this didn't look so good when I graphed it.  The new formula seems to vary more intuitively:
         k = -3.912023005428146 / np.log(.0096 * abs(w / 10) ** 2 + .02)
         k = 1 / k if w < 0 else k
         s = self.s if isinstance(self, Truth) else self
