@@ -1,4 +1,80 @@
-""":class:`.FuzzyNumber`\\ s defined by a parameterized Python method.  [TODO: review these docs.]"""
+"""creates :class:`.FuzzyNumber`\\ s defined by parameters.
+
+The representation of fuzzy numbers as :math:`t(v)` defined for all real numbers is extremely flexible and
+allows for infinite possibilities.   Users need a practical mechanism for creating fuzzy numbers to work with.
+Ideally, they should be able to describe their ideas with a few intuitive parameters.  Then they may combine them with
+operators into expressions and built up complex, highly structured fuzzy numbers to model real-life situations
+and acts of judgement.  There are two ways of creating literal fuzzy numbers via intuitive parameters:
+
+    * The general-purpose classes provided in this module, descended from :class:`.Literal`.
+    * Classes that you make yourself, designed to represent things from your own field of
+      discourse, operating via inheritance or composition.  I.e., they could be descended from :class:`.Literal`,
+      or its descendants, or assemble within themselves expressions of literals.
+
+The basic literals provided here fall into a few categories:
+
+    * Approximate numbers:  :class:`.Triangle`, :class:`.Trapezoid`, :class:`.Cauchy`, :class:`.Gauss`,
+      and :class:`.Bell`.
+    * Inequalities:  :class:`.Inequality`, and :class:`.Sigmoid`.
+    * Empirical data or a desired shape:  :class:`.CPoints`.
+    * Discrete empirical data or desired points:  :class:`.DPoints`.
+    * Fuzzy versions of other types:  :class:`.Exactly`, and :class:`.Truthy`.
+
+Approximate values are the most obvious application of fuzzy numbers, but the real power comes with representing more
+sophisticated ideas in a number.  Fuzzy inequalities allow one to reason about the grey areas of categories and
+decisions.  They are like one-sided approximate numbers.    The class :class:`.CPoints` allows one to make a fuzzy
+number out of empirical data.  Perhaps there are only a few points of :math:`t(v)` you are certain about---this class
+uses various kinds of interpolation to make them into a continuous function.  This can also be used to create functions
+of whatever shape you imagine.
+
+In all of the above, it is possible to define a continuous function with a few parameters.  With a few more, the
+domain can be restricted to a finite set of discrete points, e.g., if the truth of a number can be
+defined by a function but only integer values are sensible.  This can be done by defining uniformly-spaced values or
+by giving an explicit list of values or both. The class :class:`.DPoints` allows you to input an explicit list
+of :math:`(t,v)` pairs, similar to :class:`.CPoints`, but without connecting the points.
+
+Finally, :class:`.Exactly`, and :class:`.Truthy` allow
+one to bring crisp numbers and fuzzy truths into the world of fuzzy mathematics.  They may be used directly, but they
+are also used in the system of automatic type promotions that makes it possible to mix together ``float``, ``int``,
+``bool``, :class:`.Truth` and :class:`.FuzzyNumber` objects in expressions.
+
+More powerful than any of these, it is possible to create new types of fuzzy number.  You can, with some parameters,
+create literals that describe objects and concepts that you are modeling in your reasoning.  Since this is being done
+in a Python program, the parameters needn't be numbers---they could be objects of any type, instances of your own
+classes, perhaps.  By the same token, the definition of :math:`t(v)` is a Python program---an algorithm---and so can
+be much more complex than an ordinary mathematical function.
+
+To create new types of literal, you need only subclass :meth:`.Literal` and implement its :meth:`.Literal._sample`
+method, adding whatever parameters you need to describe your concept of the number.  You might do this to represent
+some real phenomena that vary between established limits.  For example, there is a very good model of sensory
+dissonance---the unpleasantness listeners report when hearing combinations of sounds.  One could create a
+literal that indicated dissonance vs. pitch interval (as truth vs. value), given the parameters: central pitch, and
+two sound spectra objects.  The calculation of the resulting dissonance curve depends on a numerical algorithm.
+It is not an analytical formula, but it can be easily represented by a Python method.  You define custom parameters
+by implementing your class's ``__init__(self, **kwargs)`` method.  Begin it with a
+call ``super().__init__(**kwargs)``, which handles the basic keywords and sets up the basic data members.
+
+You should observe two cautions when subclassing :meth:`.Literal`.  They have to do with the domain and origin
+members, ``self.d`` and ``self.origin``, which users may or may not set with the ``domain=`` and ``origin=`` keyword
+arguments---by default, these are set to ``None`` which may cause errors---so you should define them if the user did
+not.  Set ``self.d`` to the domain where the number is sensible and the function varies interestingly, say, over the
+truth range [.001, .999].  But: beware of vast domains that might require a vast number of samples.  If ``self.origin``
+has not been set, set it to the value where the function peaks, inflects, or has some other critical feature.
+Origin is only used in cases where uniform discretization is called for.
+
+How It Works
+============
+
+In the larger scheme of the algorithm described in the last module (:mod:`.fuzzy.number`), :meth:`._get_numerical`
+calls eventually reach literal objects ("leaves" on the "tree" of an expression).  When this method is
+called on a :class:`.Literal`, it creates a numerical representation of itself by choosing the values of
+sample points and calling its own ``_sample`` method with them.  If discretization has been called for, it does the
+same sampling for the given values and returns a :class:`._Numerical` with them as its explicit points.  In the case
+of :class:`.DPoints` no sampling is necessary, as the points have been given literally.  The class :class:`.Exactly`
+does this for a single point, and :class:`.Truthy` simply sets the "elsewhere" default truth.
+
+The next module, (:mod:`.fuzzy.operation`), describes the operators that combine literals into expressions.
+"""
 
 from __future__ import annotations
 
@@ -23,7 +99,7 @@ def _scale(data: Union[np.ndarray, Iterable[float], float],
     This is intended for scaling truth-valued parameters onto some sub-range of [0,1].  With the defaults left as
     they are, it does nothing.  If you have real-world data in some units, you might need to scale it onto the range
     of truth to represent that data as a literal fuzzy number.  Handily, ``expected_range = None`` will normalize
-    the input to ``expected_range``.
+    the input to fill ``intended_range``.
 
     Args:
         data:  Numbers that you want to scale from one range to another.
@@ -42,20 +118,23 @@ def _scale(data: Union[np.ndarray, Iterable[float], float],
 
         Returns:
             The output type depends on the input type: a :class:`.ndarray` for any ``Iterable`` or a ``float``
-            for a ``float``.  The data is scaled from ``expected_range`` to ``intended_range`` according
-            to ``map`` with validation according to ``clip``."""
+            for a ``float``.  The data is scaled from ``expected_range`` to ``intended_range`` according to ``map``."""
     t = np.array(data)
     if expected_range is None:
         expected_range = (np.min(data), np.max(data))
     if intended_range is None:
-        return default_threshold
+        if isinstance(data, float):
+            return default_threshold
+        else:
+            return np.full((len(data)), default_threshold)
     t = Truth.scale(t, "in", expected_range, map, False)
     t = Truth.scale(t, "out", intended_range, "lin", True)
     return t
 
 
 def _check_points(points: np.ndarray) -> (np.ndarray, np.ndarray):
-    """Checks a set of (v,t) points for validity and returns them as separate v,t arrays."""
+    """Checks a set of (v,t) points for validity and returns them as separate v,t arrays.
+    For validity, all truths must be on [0,1] and all values must be unique.  Exceptions are raised otherwise."""
     xv = np.atleast_2d(points)[:, 0]
     xt = np.atleast_2d(points)[:, 1]
     if (np.max(xt) > 1) or (np.min(xt) < 0):
@@ -74,6 +153,9 @@ def _check_points(points: np.ndarray) -> (np.ndarray, np.ndarray):
 class Literal(Operator):  # user only implements _sample
     """An abstract base for fuzzy numbers defined by a mathematical function given as a Python method.
 
+    To create new types of fuzzy number, one may subclass this class and implement its :meth:`.Literal._sample`
+    method, as has been done below to represent several varieties of approximate numbers.
+
     The fuzzy number may be continuous (the default) or discretized.  This is useful if the truth may be
     easily defined by a mathematical function, but only valid for discrete values.
     There are three ways of doing this:
@@ -81,61 +163,34 @@ class Literal(Operator):  # user only implements _sample
         * For an arbitrary collection of values, given by ``discrete=``.
         * For a set of uniformly-spaced values, by setting ``uniform=True`` and,
           optionally, ``step=`` and ``origin=``.
-        * Both of the above together.
+        * Both of the above together---the discrete points will be the union of the two sets.
 
-    Subclasses must implement :meth:`.Literal._sample` to be the t(v) function that defines the fuzzy number.
+    Subclasses must implement :meth:`.Literal._sample` to be the :math:`t(v)` function that defines the fuzzy number.
     Its input and output are :class:`numpy.ndarray`\\ s, so it should be done using vectorized Numpy mathematics
-    (i.e., with `*ufunc*\\ s <https://numpy.org/doc/stable/reference/ufuncs.html#available-ufuncs>`_).
-
-    Subclasses may set their ``self.origin`` to a default, if it is ``None`` (not given on initialization).
-    This should probably be the value where the function reaches its "peak" (``range[1]``), or some other
-    critical point.
-
-    Note:
-        A Literal (or _Numerical) that represents a continuous function, can have exceptional points added by
-        simple assignment, e.g.:
-
-            | ``a_function = Triangle(1, 2, 3)``
-            | ``a_point = Exactly(8)``
-            | ``a_function.xv, a_function.xt = a_point.xv, a_point.xt``
-            | ``print(a_function.t(7))``
-            | ``print(a_function.t(8))``
-
-        prints 0 then 1.  Note that the exceptional point needn't be in the domain of the continuous part.
+    (i.e., with `*ufunc*\\ s <https://numpy.org/doc/stable/reference/ufuncs.html#available-ufuncs>`_).  This
+    method can depend on members of the object that you initialize by defining the ``__init__(self, **kwargs)``
+    method of your subclass.  Begin it with a call to ``super().__init__(**kwargs)``.
     """
 
-    # domain: Domain, range: Tuple[float, float] = (0, 1), elsewhere: float = 0
-    # expected_range: Tuple[float, float] = (0, 1), intended_range: Tuple[float, float] = (0, 1),
-    #                  map: str = "lin", clip: bool = False,
-    #                  elsewhere: float = 0
     def __init__(self, **kwargs):
         """
-        Caution:
-            Authors of subclasses, take note.
-            Two of the keyword arguments, ``domain`` and ``origin`` are set to ``None`` by default.  This will cause
-            errors unless the subclass replaces them with a default.  The superclass (here) can't
-            because it doesn't know the intentions of the subclass.  The best practices are as follows:
-
-                * If ``domain == None``:  set it to the domain where the function varies interestingly,
-                  e.g., over [.001, .999].
-                * If ``origin == None``:  set it to the value where the function peaks, inflects, or has some other
-                  critical feature.
-
         Keyword Arguments:
 
             domain= (Tuple[float, float]):
-                The domain of values over which _sample defines a continuous function
-                (i.e., not including any exceptional points). The full, continuous domain will be
-                used, unless it is discretized by defining ``discrete`` or by setting ``uniform=True``.
-                Values not on ``domain`` or defined as exceptional points have a truth of ``elsewhere``.
+                The domain of values over which :meth:`.Literal._sample` defines a continuous function
+                (i.e., not considering the exceptional points). The full, continuous domain will be
+                used, unless it is discretized by defining ``discrete=`` or by setting ``uniform=True``.
+                Values will return the ``elsewhere`` truth if they are neither explicitly defined as discrete points
+                nor on the (possibly discretized) domain.  If only exceptional points are intended (as
+                in :class:`.DPoints`), ``domain`` *should be* ``None``.  Default: ``None``.
                 N.B.: if a continuous function is intended and users do not set the domain, subclasses should
                 choose a default---probably the domain where the truth has most of its variation (say, 99.9%).
             range= (Tuple[float, float]):
-                The extremes of truth that will be reached, scaled from ``expected_range``.  Default: [0,1].
-                If only exceptional points are intended, ``domain`` *should be* ``None``.  Default: ``None``.
+                The extremes of truth that will be reached.  Default: [0,1].  If ``range[0] > range[1]`` the sense of
+                the scaling is reversed and peaks become valleys (so, e.g., an approximate number becomes an
+                *exclusion* of values).
             elsewhere= (float):
-                Returned for values that are otherwise undefined.  Default: 0.
-
+                The truth returned for values that are otherwise undefined.  Default: 0.
             discrete= (Iterable[float]):
                 If defined, the domain is restricted to these values, given explicitly
                 (and to any defined by ``uniform``).
@@ -145,17 +200,25 @@ class Literal(Operator):  # user only implements _sample
             step= (float):
                 Uniform points are spaced at these intervals over ``domain``.  Default: 1.
             origin= (float):
-                Uniform points will be measured from ``origin``.  It needn't be in the domain.
+                Uniform points will be measured from ``origin``.  It needn't be in ``domain``.
                 Default:  ``None``---the subclass must choose a default,
-                and would do well to use the value where the
-                function "peaks" (i.e., reaches ``range[1]``).
-
+                and would do well to use the value where the function "peaks" (i.e., reaches ``range[1]``).
             points= (Iterable[Tuple[float, float]]):
                   A container of (v, t) pairs to be added to the continuous definition.  Default: ``None``.
 
+        Caution:
+            Authors of subclasses, take note.
+            Two of the keyword arguments, ``domain`` and ``origin`` are set to ``None`` by default.  This will cause
+            errors unless the subclass replaces them with a default.  The superclass (here) can't
+            because it doesn't know the intentions of the subclass.  The best practices are as follows:
+
+                * If ``domain == None``:  set it to the domain where the function varies interestingly,
+                  e.g., over the truth range [.001, .999].
+                * If ``origin == None``:  set it to the value where the function peaks, inflects, or has some other
+                  critical feature.
                 """
         # domain-related:
-        super().__init__([], **kwargs)
+        super().__init__(None, **kwargs)
         domain = kwargs.get('domain', None)  # Where _sample is defined, even if cd will be None due to discretization
         self.d = None if domain is None else Domain(domain) if isinstance(domain, tuple) else domain
         # If None, subclasses must supply a default
@@ -166,14 +229,14 @@ class Literal(Operator):  # user only implements _sample
         self.discrete = kwargs.get('discrete', None)
         self.uniform = kwargs.get('uniform', False)
         self.step = kwargs.get('step', 1)
-        self.origin = kwargs.get('origin', None)
+        self.origin = kwargs.get('origin', None)  # If None, subclasses must supply a default
         if self.discrete is not None:
             self.discrete = np.array(self.discrete)
         if self.uniform:
             if self.step <= 0:
                 raise ValueError("Step must be > 0.")
         # exceptional points
-        points = kwargs.get('points', None)  # TODO: Am I going to make this keyword-settable???
+        points = kwargs.get('points', None)
         if (points is not None) and (len(points) != 0):
             xv, xt = _check_points(points)
             self.xv, self.xt = xv, xt
@@ -206,26 +269,41 @@ class Literal(Operator):  # user only implements _sample
         It should return a truth on [0,1] for any real number in the domain, ``self.d``,
         using vectorized Numpy functions.
 
-        You can call ``super()._sample(v) for values outside ``self.d``---or simply return ``self.e`` for them."""
+        You can call ``super()._sample(v) for values outside the defined domain, ``self.d``---or simply return
+        the "elsewhere" value, ``self.e``, for them.
 
-    def _get_domain(self, extreme_domain: Domain = None) -> Domain:
-        if extreme_domain is None:
-            return self.d
-        else:
-            return self.d.intersection(extreme_domain)
+        If you intend for your number to have a continuous domain you should check to see if the value of ``self.d``
+        is ``None``.   This indicates that the caller has not requested one.  The best choice in this case is
+        probably the domain over which the truth has most of its variation (say, 99.9%), or is above some threshold
+        of significance (say, .001).  You might even consider using :class:`.Domain.intersection` with self.d to
+        restrict it to whatever you consider reasonable.
+
+        If ``self.uniform==True`` you should also make sure that ``self.origin`` is set (and not ``None``).
+        It should probably be the point where the function peaks or has some other critical point."""
+
+    def _get_domain(self) -> Domain:
+        return self.d
 
     def _get_numerical(self, precision: int, allowed_domain: Domain = None) -> _Numerical:
-        """"""
+        """Returns a numerical version of itself.  This is where the Literal object samples itself, and where
+        the details of discretization are determined."""
         domain = self.d  # The domain on which _sample() is defined (and a bit beyond, we can hope).
+        discrete_points = self.discrete
         if allowed_domain is not None:
             domain = domain.intersection(allowed_domain)
         if (domain is None) or (precision <= 0):
             num = _Numerical(None, 0, None, None, self.xv, self.xt, self.e)
             if allowed_domain is not None:
-                num = _Numerical._impose_domain(num, allowed_domain)  # noqa
+                num = _Numerical._impose_domain(num, allowed_domain)
             return num
-        xv, xt = self.xv, self.xt
-        discrete = (self.discrete is not None) and (len(self.discrete) > 0)
+        xv, xt = self.xv, self.xt  # explicitly-defined exceptional points
+        if discrete_points is not None:  # Exclude discrete points outside the continuous domain.
+            if domain is None:
+                discrete_points = None
+            else:
+                discrete_points = discrete_points[(discrete_points >= domain[0]) & (discrete_points <= domain[1])]
+                discrete_points = None if len(discrete_points) == 0 else discrete_points
+        discrete = (discrete_points is not None) and (len(discrete_points) > 0)
         if discrete or self.uniform:  # Discretization has been called for.
             cd, cn, cv, ct = None, 0, None, None
             xv = np.empty(0)
@@ -236,7 +314,7 @@ class Literal(Operator):  # user only implements _sample
                 v1 = self.origin + n1 * self.step
                 xv = np.linspace(v0, v1, n1 - n0 + 1)  # Calculate the values of the points.
             if discrete:
-                xv = np.unique(np.concatenate((xv, self.discrete)))
+                xv = np.unique(np.concatenate((xv, discrete_points)))
             xv = np.setdiff1d(xv, self.xv, assume_unique=True)  # Remove from xv any elements that are in self.xv
             xt = self._sample(xv)  # Sample the Literal at the exceptional points.
             xt = _guard(xt)
@@ -267,7 +345,13 @@ class Literal(Operator):  # user only implements _sample
         return _Numerical._impose_domain(_Numerical(cd, cn, cv, ct, xv, xt, self.e), allowed_domain)
 
     def t(self, v: Union[np.ndarray, float]) -> Union[np.ndarray, float]:
-        """Returns the truth of given values."""
+        """Returns the truth of given values.
+
+        Args:
+            v: a ``float`` value, or an array of them.
+
+        Returns:
+            The truth(s) of the given value(s)."""
         a = isinstance(v, np.ndarray)
         v = np.atleast_1d(v)
         e = np.full_like(v, self.e)
@@ -275,7 +359,7 @@ class Literal(Operator):  # user only implements _sample
         if self.d is None:
             c_e = e
         else:
-            c_e = np.where((v < self.d[0]) | (v > self.d[1]), e, c) # in an Exactly, d is None.
+            c_e = np.where((v < self.d[0]) | (v > self.d[1]), e, c)  # in an Exactly, d is None.
         for i, value in enumerate(v):
             j = np.where(value == self.xv)[0]
             if j is None or len(j) == 0:
@@ -284,11 +368,23 @@ class Literal(Operator):  # user only implements _sample
             c_e = _guard(c_e)
         return c_e if a else c_e[0]
 
+    # Because of the inheritance structure, Literals must be Operators, but they don't really need implementations
+    # of the superclass's abstract methods ``_operate`` and ``_op``.
+
     def _operate(self, precision: int, allowed_domain: Domain = None):
         pass
 
     def _op(self, *args) -> Union[np.ndarray, float]:
         pass
+
+    def d_op(self, inv: bool, *d: Domain) -> Domain:
+        """:class:`.Literal`\\ s simply return the intersection of continuous domain for which they are defined,
+        with that of the called-for domain.
+
+        They are never called for an inverse domain, so ``inv`` is irrelevant."""
+        if d[0] is None:
+            return self.d
+        return self.d.intersection(d[0])
 
 
 class Triangle(Literal):
@@ -301,8 +397,8 @@ class Triangle(Literal):
                 these points.  The condition :math:`a \\le b \\le c` must hold
             range:  Default: (0,1).  The truths are:
 
-                | ``'expected_range'[0]`` at ``a`` and ``c``,
-                | ``'expected_range'[1]`` at ``b``.
+                | ``range[0]`` at ``a`` and ``c``,
+                | ``range[1]`` at ``b``.
 
         Other Parameters:
 
@@ -319,9 +415,6 @@ class Triangle(Literal):
             self.d = Domain((a, c))
         if self.origin is None:
             self.origin = b
-        # Oh, who cares?:
-        # if (self.discrete is not None) and ((self.discrete < self.d[0]).any() or (self.discrete > self.d[1]).any()):
-        #     raise ValueError("discrete points outside domain are redundant---they'd report the default anyway.")
 
     def __str__(self):
         s = super().__str__()
@@ -404,7 +497,7 @@ class Trapezoid(Literal):
 class Cauchy(Literal):
     """Describes a fuzzy number as the bell-shaped function due to Augustin-Louis Cauchy.
 
-    This is a way of talking about a number as "``c`` ± ``hwhm``"."""
+    This is a way of talking about a number as "``c`` ± ``hwhm``" (half width at half maximum)."""
 
     def __init__(self, c: float, hwhm: float, **kwargs):
         """
@@ -489,8 +582,8 @@ class Gauss(Literal):
 class Bell(Literal):
     """Describes a fuzzy number as a generalized bell membership function.
 
-    This is a way of talking about a number as ``c`` ± ``hwhm`` with confidence ``slope``, or with
-    vagueness ``transition_width``."""
+    This is a way of talking about a number as ``c`` ± ``hwhm`` (half width at half maximum)
+    with confidence ``slope``, or with vagueness ``transition_width``."""
 
     def __init__(self, c: float, hwhm: float, shape: float = 1, unit: str = "p", **kwargs):
         """
@@ -561,9 +654,11 @@ class Bell(Literal):
 class Inequality(Literal):
     """Describes a fuzzy inequality as piecewise linear.
 
+    I.e., :math:`t(v)` looks like a shelf function with a linear segment at the transition.
     The "``sense``" of an inequality can be either ``">"`` or ``"<"``.
-    An Inequality is a way of talking about an inequality as: "a value is ``sense c`` to within ``width``", or
-    "with confidence ``slope``".  At ``c``, the truth is .5.  Surrounding this, there is a transition region where
+
+    An :class:`.Inequality` is a way of talking about an inequality as: "a value is ``sense c`` to within ``width``",
+    or "with confidence ``slope``".  At ``c``, the truth is .5.  Surrounding this, there is a transition region where
     the truth varies linearly between (0,1).  On either side of this it is {0,1} depending on the ``sense``."""
 
     def __init__(self, sense: str, c: float, shape: float = 1, unit: str = "s", **kwargs):
@@ -575,6 +670,7 @@ class Inequality(Literal):
             shape: A parameter affecting the shape of the middle.  Its significance depends on ``unit`` below.
                 Default: 1, unit="s"---a slope of 1.
             unit: The meaning of ``shape``.  It can have two values: {``s``, ``w``}:
+
                 * ``s``: **slope**---the slope of the transition region.
                 * ``w``: **width**---the width of the transition region.
 
@@ -583,7 +679,8 @@ class Inequality(Literal):
             kwargs: Keyword arguments relating to domain, range, discretization, and exceptional points:
                 See :class:`.Literal`.
             domain: Default:  the domain that covers the transition region---where the range is (0,1).
-                You may well wish to override this, extending the side of interest---probably the ``True`` side.
+                You may well wish to override this, extending the side of interest---probably the ``True`` side
+                (since, beyond the domain, :math:`t(v)` will revert to the "elsewhere" value, which is probably 0).
             origin:  Default: ``c``.
 
         Warning:
@@ -593,7 +690,12 @@ class Inequality(Literal):
         Caution:
             * The :meth:`.Inequality.t` method has been overridden to give the extremes of ``range``
               according to the ``sense`` of the inequality.  Consequently, there is no ``v`` for which it
-              automatically returns ``elsewhere``.
+              automatically returns ``elsewhere``.  E.g. ``Inequality(">", 0, domain=(-2, 2)).t(3)`` returns 1.
+            * The other behaviors of the class cannot do this because they depend on an array of samples that cannot
+              practically extend to infinity, so the fuzzy number has the "elsewhere" truth adjoining its domain on
+              both sides---even though this does not agree with the concept of "inequality".
+              E.g. ``Inequality(">", 0, domain=(-2, 2)).display(None, Domain((-8,8)))`` reveals a drop to 0
+              to the right of ``v == 2``.
             * Making ``range[1] > range[0]`` will reverse the ``sense`` of the inequality.
 
             """
@@ -622,14 +724,10 @@ class Inequality(Literal):
 
     def _sample(self, v: np.ndarray) -> np.ndarray:
         """Returns the truth for every value in ``v``."""
-        # s = 1 / (1 + np.exp(-self.sense * self.a * (v - self.c)))
-        # s = s * (self.range[1] - self.range[0]) + self.range[0]
-
         left = np.zeros_like(v)
         right = np.ones_like(v)
         slope = self.sense / (2 * self.half_width)
         middle = (v - self.c + self.sense * self.half_width) * slope
-        # middle = (-.5 * v) / self.half_width + (.5 + (.5 * self.c) / self.half_width)
         slm = np.fmax(left, middle)
         s = np.fmin(slm, right)
         s = s * (self.range[1] - self.range[0]) + self.range[0]
@@ -640,7 +738,7 @@ class Inequality(Literal):
 
         To follow the behavior expected of an inequality, it returns an extreme of ``range`` according
         to the ``sense`` of the inequality (``">"`` or ``"<"``).    I.e., it's a shelf function.
-        N.B.: it does not automatically return ``elsewhere`` for any ``v``. """
+        N.B.: there is no ``v`` for which it automatically returns ``elsewhere``. """
         if v < self.d[0]:
             return self.range[0] if self.sense > 0 else self.range[1]
         elif v > self.d[1]:
@@ -652,9 +750,12 @@ class Inequality(Literal):
 class Sigmoid(Literal):
     """Describes a fuzzy inequality as a sigmoid curve.
 
+
+    I.e., :math:`t(v)` looks like a shelf function with an S-shaped segment at the transition.
     The "``sense``" of an inequality can be either ``">"`` or ``"<"``.
-    A Sigmoid, then, is a way of talking about an inequality as: "a value is ``sense c`` to within ``width``", or
-    "with confidence ``slope``"."""
+
+    A :class:`.Sigmoid`, then, is a way of talking about an inequality as: "a value is ``sense c``
+    to within ``width``", or "with confidence ``slope``"."""
 
     def __init__(self, sense: str, c: float, shape: float = 1, unit: str = "s", **kwargs):
         """
@@ -665,6 +766,7 @@ class Sigmoid(Literal):
             shape: A parameter affecting the shape of the middle.  Its significance depends on ``unit`` below.
                 Default: 1, unit="s"---a slope of 1 at ``c``.
             unit: The meaning of ``shape``.  It can have two values: {``s``, ``w``}:
+
                 * ``s``: **slope**---the  slope at ``c``.
                 * ``w``: **width**---the width of the transition region, where the truth varies on [.1, .9].
 
@@ -682,7 +784,12 @@ class Sigmoid(Literal):
         Caution:
             * The :meth:`.Sigmoid.t` method has been overridden to give the extremes of ``range``
               according to the ``sense`` of the inequality.  Consequently, there is no ``v`` for which it
-              automatically returns ``elsewhere``.
+              automatically returns ``elsewhere``.  E.g. ``Sigmoid(">", 0, domain=(-2, 2)).t(3)`` returns 1.
+            * The other behaviors of the class cannot do this because they depend on an array of samples that cannot
+              practically extend to infinity, so the fuzzy number has the "elsewhere" truth adjoining its domain on
+              both sides---even though this does not agree with the concept of "inequality".
+              E.g. ``Sigmoid(">", 0, domain=(-2, 2)).display(None, Domain((-8,8)))`` reveals a drop to 0
+              to the right of ``v == 2``.
             * Making ``range[1] > range[0]`` will reverse the ``sense`` of the inequality.
 
             """
@@ -721,7 +828,7 @@ class Sigmoid(Literal):
 
         To follow the behavior expected of an inequality, it returns an extreme of ``range`` according
         to the ``sense`` of the inequality (``">"`` or ``"<"``).    I.e., it's a shelf function.
-        N.B.: it does not automatically return ``elsewhere`` for any ``v``. """
+        N.B.: there is no ``v`` for which it automatically returns ``elsewhere``. """
         if v < self.d[0]:
             return self.range[0] if self.sense > 0 else self.range[1]
         elif v > self.d[1]:
@@ -740,16 +847,16 @@ class CPoints(Literal):
                  expected_range: Tuple[float, float] = (0, 1), map: str = "lin", **kwargs) -> None:
         """
         Args:
-            knots:  A collection of (value, truth) pairs---knots to be interpolated between, producing t(v).
+            knots:  A collection of (value, truth) pairs---knots to be interpolated between, producing :math:`t(v)`.
                 Values need not be unique (discontinuities are all right) and all "truths" are not checked for validity
                 since they will be scaled to (keyword argument) ``range``---i.e., you can use (value, raw data) pairs
                 to represent empirical (or imaginary) information.
             interp: Interpolator type used to construct the t(v) function.  See :class:`.Interpolator`.  Some
                 interpolators may define curves that stray outside [0,1], but these will be clipped automatically.
-                Default: ``linear``.  See :class:`.Interpolator`.
+                Default: ``linear``.
             expected_range: The expected range of input data.  Default: [0,1].
 
-                * The default allows direct entry of data.
+                * The default allows direct entry of truths.
                 * If ``expected_range==None``, the input will be normalized to fill ``range``.
 
                 This provides a convenient way to make empirical data into a fuzzy number.
@@ -803,9 +910,10 @@ class DPoints(CPoints):
 
             points:  A collection of (value, truth) pairs---discrete points (an iterable of tuples).
                 All values must be unique and all truths will be scaled to (keyword argument) ``range``.
+                For all other values, the number will report its "elsewhere" truth.
             expected_range: The expected range of input data.  Default: [0,1].
 
-                * The default allows direct entry of data.
+                * The default allows direct entry of truths.
                 * If ``expected_range==None``, the input will be normalized to fill ``range``.
 
                 This provides a convenient way to make empirical data into a fuzzy number.
@@ -854,7 +962,7 @@ class Exactly(DPoints):
 class Truthy(Literal):
     """A fuzzy number equivalent to a Truth.
 
-    This enables :class:`.Truth` to be used in fuzzy calculations.  (Fuzzy logic operators conveniently promote
+    This enables :class:`.Truth` objects to be used in fuzzy calculations.  (Fuzzy logic operators conveniently promote
     number operands to :class:`.Truthy` objects.)
     """
 

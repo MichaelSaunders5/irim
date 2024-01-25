@@ -16,12 +16,24 @@ from fuzzy.norm import Norm, default_norm
 from fuzzy.number import FuzzyNumber, Domain, default_sampling_method, default_interpolator, _Numerical
 from fuzzy.truth import Truth
 
-LogicOperand = Union[FuzzyNumber, Truth, float, int, bool]  # but not np.ndarray, because it has no domain
-# --> numbers get promoted to Truthy with  e=truth
+LogicOperand = Union[FuzzyNumber, Truth, float, int, bool]
+"""Types appropriate to logic operators.
+It indicates {:class:`FuzzyNumber` | :class:`Truth` | ``float`` | ``int`` | ``bool``}.  
+(:class:`numpy.ndarray` is not included because it has no domain).
+In operations, :class:`Truth` objects get promoted to :class:`.Truthy` objects.  This is also true of Python 
+numerical types if they are on [0,1] and the operator is logical; otherwise, they are promoted 
+to :class:`.Exactly` objects."""
 
-MathOperand = Union[FuzzyNumber, float, int, bool]  # --> numbers get promoted to Exact with  v=value
+MathOperand = Union[FuzzyNumber, float, int, bool]
+"""Types appropriate to arithmetic operators.
+It indicates {:class:`FuzzyNumber` | ``float`` | ``int`` | ``bool``}.  In operations, the Python numerical 
+types get promoted to :class:`.Exactly` objects."""
 
-Operand = Union[LogicOperand, MathOperand]  # = LogicOperand.  Not really used, I think
+Operand = Union[LogicOperand, MathOperand, None]
+"""Types appropriate to all operators.
+It indicates {:class:`FuzzyNumber` | :class:`Truth`  | ``float`` | ``int`` | ``bool`` | ``None``}.  
+I.e., the same as :attr:`.LogicOperand` with ``None`` included to allow operators to have no 
+operands---because :class:`.Literal`\\ s don't."""
 
 default_r_precision: int = 401
 """Related to the maximum number of samples taken for the longest line on the Cartesian product when sampling it 
@@ -32,8 +44,8 @@ looked good to me in testing."""
 
 
 def _handle_defaults(**kwargs) -> Tuple:
-    """Used for setting obscure defaults, globally by :meth:`.fuzzy_ctrl` or in a calculation or on
-    individual :class:`.Operator`\\ s.  See :meth:`.fuzzy_ctrl`."""
+    """Used for setting obscure defaults, globally by :meth:`.fuzzy_ctrl`; or on an :class:`.Operator`
+    within an expression.  See :meth:`.fuzzy_ctrl`."""
     norm_args = kwargs.get('norm', None)
     if norm_args is not None:
         norm = Norm.define(**norm_args)
@@ -42,10 +54,10 @@ def _handle_defaults(**kwargs) -> Tuple:
     r_precision = kwargs.get('r_precision', None)  # int > 3
     threshold = kwargs.get('threshold', None)  # float on [0,1]
     sampling = kwargs.get('sampling', None)  # str: either "Chebyshev" or "uniform"
-    interpolator = kwargs.get('interpolator', None)  # Interpolator
-    interpolator = Interpolator(interpolator)
+    interpolator = kwargs.get('interpolator', None)  # ``kind`` (str or Tuple for Interpolator init parameters)
+    interpolator = Interpolator(interpolator)  # Interpolator object
     resolution = kwargs.get('resolution', None)  # float
-    # crisp = kwargs.get('crisper', None)  # Crisper
+    # crisp = kwargs.get('crisper', None)  # Crisper init parameters
     crisper = None  # Crisper()  # TODO: decode the dict "crisp" and construct a crisper here as it instructs.
     return norm, r_precision, threshold, sampling, interpolator, resolution, crisper
 
@@ -54,7 +66,7 @@ def fuzzy_ctrl(**kwargs):
     """Set global defaults.
 
     This is a convenience for controlling default attributes of the :mod:`.fuzzy` package with one simple interface,
-    and without having to import everything.  You set the keywords to the parameter you want or, in more complex
+    and without having to import all its modules.  You set the keywords to the parameter you want or, in more complex
     cases, a dictionary with various keys.  Its counterpart, :meth:`.fuzzy_ctrl_show`, prints them out.
 
     Keyword Parameters:
@@ -107,7 +119,7 @@ def fuzzy_ctrl(**kwargs):
 
         threshold= float on [0,1]
             The threshold for crisping :class:`.Truth`---the fuzzy truth defining the boundary between Boolean ``True``
-            and not ``False``, used by :meth:`.Truth.crisp` and ``bool``.  The default, .5, is probably best left alone.
+            and ``False``, used by :meth:`.Truth.crisp` and ``bool``.  The default, .5, is probably best left alone.
 
         sampling= {"Chebyshev", "uniform"}
             Used when :class:`._Numerical`\\ s are constructed internally for calculations.  The default, "Chebyshev",
@@ -145,8 +157,8 @@ def fuzzy_ctrl(**kwargs):
             +--------------------+-------------------------------------------------------------------+
 
         resolution= float
-            The default resolution for creating :class:`.Map`\\ s and for :meth:`.FuzzyNumber.crisp`\\ ing.  You
-            really shouldn't rely on *any* default for this, since it depends on the units of your calculation and
+            The default resolution for creating :class:`.Numerical_Map`\\ s and for :meth:`.FuzzyNumber.crisp`\\ ing.
+            You really shouldn't rely on *any* default for this, since it depends on the units of your calculation and
             how precise you need them to be---things which only you know.
 
         crisper= Crisper
@@ -185,7 +197,17 @@ def fuzzy_ctrl_show() -> None:
 
 
 def safe_div(x: Union[float, np.ndarray], y: Union[float, np.ndarray]) -> Union[float, np.ndarray]:
-    """Guilt-free division by zero results in the largest possible ``float``; 0/0 returns 0."""
+    """Allows guilt-free division by zero.
+
+     This defines the undefined cases of division with practical results.
+
+     Args:
+         x, y: A numerator and denominator, or an array of them (if two arrays, they should be of the same length).
+
+     Returns:
+         The result is  x / y, unless this overflows or y == 0, in which case it returns half
+         the largest possible ``float`` (with appropriate sign); 0/0 returns 0.
+         """
     with np.errstate(over='ignore', divide='ignore', invalid='ignore'):
         r = np.divide(x, y)
     r = np.nan_to_num(r, nan=0, posinf=float_info.max / 2, neginf=-float_info.max / 2)
@@ -193,7 +215,15 @@ def safe_div(x: Union[float, np.ndarray], y: Union[float, np.ndarray]) -> Union[
 
 
 def safe_mul(x: Union[float, np.ndarray], y: Union[float, np.ndarray]) -> Union[float, np.ndarray]:
-    """Multiplication that cannot overflow---inf becomes the largest possible ``float`` / 2."""
+    """Multiplication that cannot overflow.
+
+    Args:
+         x, y: A numerator and denominator, or an array of them (if two arrays, they should be of the same length).
+
+     Returns:
+         The result is  x * y, unless this overflows, in which case it returns the 4th root of
+         the largest possible ``float`` (with appropriate sign).
+         """
     with np.errstate(over='ignore', invalid='ignore'):
         r = np.multiply(x, y)
         safenum = sqrt(sqrt(float_info.max))
@@ -201,21 +231,31 @@ def safe_mul(x: Union[float, np.ndarray], y: Union[float, np.ndarray]) -> Union[
     return r
 
 
-def safe_log(a: Union[float, np.ndarray]) -> (Union[int, np.ndarray], Union[float, np.ndarray]):
-    """returns the sign and log of `a`.  To recover `a`, multiply sign by exp(a) and `exp`.  To multiply, multiply
-    product of all signs by the sum of all logs and `exp`."""
-    with np.errstate(all='ignore'):
-        absa = np.abs(a)
-        r = np.where(absa < 1, -np.log1p(absa), np.log(absa))
-    r = np.nan_to_num(r, nan=0, posinf=float_info.max / 2, neginf=-float_info.max / 2)
-    return np.sign(a), r
-
-
-def inv_safe_log(s: Union[int, np.ndarray], a: Union[float, np.ndarray]) -> Union[float, np.ndarray]:
-    return s * np.where(a < 0, np.expm1(-a), np.exp(a))
+# def safe_log(a: Union[float, np.ndarray]) -> (Union[int, np.ndarray], Union[float, np.ndarray]):
+#     """returns the sign and log of `a`.  To recover `a`, multiply sign by exp(a) and `exp`.
+#     To multiply, multiply product of all signs by the sum of all logs and `exp`."""
+#     with np.errstate(all='ignore'):
+#         absa = np.abs(a)
+#         r = np.where(absa < 1, -np.log1p(absa), np.log(absa))
+#     r = np.nan_to_num(r, nan=0, posinf=float_info.max / 2, neginf=-float_info.max / 2)
+#     return np.sign(a), r
+#
+#
+# def inv_safe_log(s: Union[int, np.ndarray], a: Union[float, np.ndarray]) -> Union[float, np.ndarray]:
+#     return s * np.where(a < 0, np.expm1(-a), np.exp(a))
 
 
 def _get_sample_points(cd: Domain, cn: int, sampling_method: str) -> np.ndarray:
+    """Calculates the values to sample a function at.
+
+    Args:
+        cd: (Domain) The domain on which to sample.  Its extreme points will always be sample points.
+        cn: (int>1) the number of sample points to take.
+        sampling_method: (str) either "Chebyshev" (for near-minimax polynomial approximation) or "uniform".
+
+    Returns:
+        An array of values at which to sample a function.
+        """
     if sampling_method == "Chebyshev":  # Find the values to sample at, Chebyshev or uniform.
         m = cn + 4
         cv = np.arange(2, m - 1, 1)
@@ -225,7 +265,7 @@ def _get_sample_points(cd: Domain, cn: int, sampling_method: str) -> np.ndarray:
     return cv
 
 
-def _promote_and_call(a, b, op_name, logic: bool = True):
+def _promote_and_call(a: Operand, b: Operand, op_name: str, logic: bool = True):
     """Appropriately promote the operand types and call the operator.
 
     This exists so that we may use :class:`.Truth`, :class:`.FuzzyNumber`, and built-in Python numerical types
@@ -252,9 +292,10 @@ def _promote_and_call(a, b, op_name, logic: bool = True):
     and ``b`` preserved, since not all operands are commutative.
 
     Args:
-        a, b: operands which may be :class`.Truth`, :class`.FuzzyNumber`, ``float``, ``int``, or ``bool``.
+        a, b: operands which may be :class`.Truth`, :class`.FuzzyNumber`, ``float``, ``int``, or ``bool``
+            (or arrays of the numerical types).
         op_name: in a string, the name of the :class`.Operator` method called for, e.g., ``imp``.
-        logic: true if the operator being called is logical.
+        logic: ``True`` if the operator being called is logical.
 
     Returns:
         A :class`.Truth`, or :class`.FuzzyNumber` that is the result of the indicated operation on ``a`` and ``b``.
@@ -262,7 +303,7 @@ def _promote_and_call(a, b, op_name, logic: bool = True):
     a_fuz, b_fuz = isinstance(a, FuzzyNumber), isinstance(b, FuzzyNumber)
     if a_fuz and b_fuz:
         return eval("Operator." + op_name + "(a, b)")  # Call the operator if both are FuzzyNumbers.
-    p = a if b_fuz else b  # Promote the one that isn't a FuzzyNumber.
+    p = a if b_fuz else b  # Promote ``p``, the one that isn't a FuzzyNumber.
     if isinstance(p, Truth):  # Even if the op is math, using a Truth operand suggests that you mean a Truthy.
         from fuzzy.literal import Truthy
         p = Truthy(p)
@@ -278,29 +319,79 @@ def _promote_and_call(a, b, op_name, logic: bool = True):
         else:  # Using a math operator, assume the number is a crisp value.
             from fuzzy.literal import Exactly
             p = Exactly(p)
-    a = p if b_fuz else a  # Put a and b back in the original order.
-    b = b if b_fuz else p
+    a = p if b_fuz else a  # noqa   # Put a and b back in the original order.
+    b = b if b_fuz else p  # noqa
     return eval("Operator." + op_name + "(a, b)")  # Call the operator for FuzzyNumbers
 
 
 class Operator(FuzzyNumber, ABC):
-    """The base class for operators.  It handles obscure calculation parameters usually left to global defaults.
+    """The base class for operators.
 
-    It sets any attributes an operator *might* need to consult.  If an operator needs one, it looks in itself, and it
-    hasn't been set, it takes the global default, e.g.:  ``n = getattr(self, 'norm', default_norm)')``.
-    Possible attributes are:
+    An Operator contains zero or more :class:`.FuzzyNumber` :attr:`.Operand`\\ s, and exists to produce
+    a :class:`.FuzzyNumber`result depending on them.  An :class:`.Operator` *is a* :class:`.FuzzyNumber` because its
+    result is a :class:`.FuzzyNumber`---and so it can serve as the :attr:`.Operand` of another :class:`.Operator`.
+    In this way, a "tree" built of :class:`.Operator` objects represents an expression of fuzzy reasoning.
 
-    * fuzzy.norm.default_norm --- needed for most math and logic operators.
-    * fuzzy.operator.default_n --- needed for binary math operators.
-    * fuzzy.truth.default_threshold --- needed for :class:`.Weight`.
-    * fuzzy.number.default_sampling_method --- maybe; used when resampling in some operators.
-    * fuzzy.number.default_interpolator --- maybe; used when resampling in some operators.
-    * fuzzy.number.default_crisper  --- not used in operators; given for :meth:`.FuzzyNumber.crisp`.
-    * fuzzy.number.default_resolution  --- not used in operators; given for :meth:`._get_numerical`
-      and related calls (:meth:`.FuzzyNumber.map`, :meth:`.FuzzyNumber.crisp`).
+    The subclasses of this base class are familiar from logic (e.g., not, and, or) and arithmetic (e.g., add,
+    subtract, multiply, divide).  Objects of its subclass :class:`.Literal` (described in its own module) have no
+    operands themselves, but serve as operands---the "leaves" of the expression tree.
+
+    Its abstract private members are:
+
+        * :meth:`_get_numerical` here does the generic work of stripping off disallowed exceptional
+          points, wrapping a call to the operator's :meth:`_operate` method, which does the actual work of returning
+          the numerical result of the operation.
+        * :meth:`_op` carries out the operation at its simplest level.  E.g., in :class:`.BinAdd` it returns
+          the sum of its arguments, which are ``float``\\s or arrays of them.  this is used internally
+          by :meth:`_operate`.
+        * The main duty of the base class is to set up the :class:`.Operator` object's attributes---rare parameters
+          that it might need, indicated by the keyword arguments, ``kwargs`` given in operator calls.  This is
+          handled by :meth:`._set_attributes`, which interprets the arguments (with the same syntax
+          as fuzzy_ctrl), and :meth:`._prepare_operand`, which sets the attributes of the operands, where they have not
+          already been set by explicit ``kwargs`` of their own.  This has the effect that any operator in the tree
+          inherits the attributes of its containing operator, unless they are overriden (and that the override
+          propagates down to its contained operands).
+
+          It sets any attributes an operator *might* need to consult.  If an operator needs one, it looks in itself,
+          and it
+          hasn't been set, it takes the global default.  Possible attributes are:
+
+          * fuzzy.norm.default_norm --- needed for most math and logic operators.
+          * fuzzy.operator.default_n --- needed for binary math operators.
+          * fuzzy.truth.default_threshold --- needed for :class:`.Weight`.
+          * fuzzy.number.default_sampling_method --- maybe; used when resampling in some operators.
+          * fuzzy.number.default_interpolator --- maybe; used when resampling in some operators.
+          * fuzzy.number.default_crisper  --- not used in operators; given for :meth:`.FuzzyNumber.crisp`.
+          * fuzzy.number.default_resolution  --- not used in operators; given for :meth:`._get_numerical`
+                and related calls (:meth:`.FuzzyNumber.map`, :meth:`.FuzzyNumber.crisp`).
 
     If you set an attribute of an operator via ``**kwargs``, it sets the attribute in itself, its operands,
-    their operands, and so on---its whole sub-tree---except where these have already been explicitly set.
+    their operands, and so on---its whole sub-tree---except where these have are explicitly set by
+    their own ``kwargs``.
+
+        * Other abstract methods inherited from :class:`.FuzzyNumber` are passed on for implementation
+          by the subclasses.
+    * public:
+
+        * :meth:`.d_op` relates the domains of operands to that of results for the operator.  This is used to tell
+        where the result will be defined and where to sample the operands corresponding to a resultant
+        domain of interest.
+
+        * A family of methods, one for each operation.  These are actually factory methods that create
+          :class:`.Operator` objects of the desired type.  E.g., using :meth:`.imp` actually creates and
+          :class:`.Imp` object.
+        * Related to this, a family of symbolic operator overloads, one for each operation.  E.g., using ``>>`` in
+          an expression causes Python to call the ``__rshift__`` or ``__rrshift__`` magic methods which
+          :class:`.Operator` has redefined to call :meth:`._promote_and_call` (which prepares the operands
+          appropriately and calls :meth:`Operator.imp` with the prepared operands, producing an :class:`.Imp` object
+          that contains them.  Thus, a written expression builds an operator tree ready to function as a fuzzy
+          number, with all of :class:`..FuzzyNumber``` 's public methods (t, crisp, map, and so on) well-defined.
+
+    Subclasses do not inherit from :class:`.Operator` directly, but multiply, from two of its subclasses: one of
+    {:class:`.LogicOperator`, :class:`.MathOperator`} and one of {:class:`.UnaryOperator`,
+    :class:`.BinaryOperator`, :class:`.AssociativeOperator`}.
+
+
 
     How do you make an operator?  I think by just:
 
@@ -319,62 +410,43 @@ class Operator(FuzzyNumber, ABC):
     def __init__(self, *operands: Operand, **kwargs):
         """See :meth:`.fuzzy_ctrl` for parameter docs.
 
-        Subclasses of Operator will access these by, e.g.:
-        ``n = getattr(self, 'norm', default_norm)``, i.e. See if one has been set for this expression/operator.
-        If not, use the global default.
-
-        ook: override_operand_kwargs:  if true, the operator passes on its attributes to its operands:
+        Subclasses of :class:`.Operator` will access these by, e.g.:  ``n = getattr(self, 'norm', default_norm)``.
+        I.e. get the one that has been set for this expression/operator, but if none has been set,
+        use the global default.
         """
         super().__init__()
         self.operands = list(operands)
         self._set_attributes(**kwargs)
 
     def _get_numerical(self, precision: int, allowed_domain: Domain = None) -> _Numerical:
-        """operate on the operand over its consequential domain with the required precision.
-        :class:`.UnaryOperator`, :class:`.BinaryOperator`, and :class:`.AssociativeOperator` must each implement
-        :meth:`._operate(precision, allowed_domain)` to handle one, two , or many operands."""
-        # if allowed_domain is not None:      # TODO this is not the place to impose domain  on binaries
-        #     allowed_domain = self.d_op(True, allowed_domain)  # Only sample where it matters.-------------
-        # iT LOOKS LIKE I've just renamed "_get_numerical" "_operate" in this neighborhood!
-        # Ah, at least this can be the one place I clean up the exceptional points with:
+        """The call to :meth:`_operate` obtains the operands over their consequential domain with the required
+        precision and performs the operation.  Here, we merely strip off the disallowed exceptional points.
+        The subclasses, :class:`.UnaryOperator`, :class:`.BinaryOperator`, and :class:`.AssociativeOperator`
+        must each implement :meth:`._operate(precision, allowed_domain)` to handle one, two, or many operands."""
         return _Numerical._impose_domain(self._operate(precision, allowed_domain), allowed_domain)
 
     @abstractmethod
-    def _operate(self, precision: int, allowed_domain: Domain = None):  # -> _Numerical
+    def _operate(self, precision: int, allowed_domain: Domain = None) -> _Numerical:
         """Every operator must be able to get numerical representations of its operands,
-        disassemble them, operate on their parts, return a numerical result.
+        disassemble them, operate on their parts, return a numerical result.  This does the actual work of
+        :meth:`_get_numerical` particular to the operator.  :meth:`_get_numerical` itself does the generic work
+        of stripping off disallowed exceptional points.
 
-            * fuzzy.norm.default_norm --- needed for most math and logic operators.
-            * fuzzy.operator.default_r_precision --- needed for binary math operators.
-            * fuzzy.truth.default_threshold --- needed for :class:`.Weight`.
-            * fuzzy.number.default_sampling_method --- maybe; used when resampling in some operators.
-            * fuzzy.number.default_interpolator --- maybe; used when resampling in some operators.
-            * fuzzy.number.default_crisper  --- not used in operators; given for :meth:`.FuzzyNumber.crisp`.
-            * fuzzy.number.default_resolution"""
-        # attribute setups look like:
-        # n = getattr(self, 'norm', default_norm)
-        # threshold = getattr(self, 'threshold', default_threshold)
-        # sampling = getattr(self, 'sampling', default_threshold)
-        # interpolator = getattr(self, 'interpolator', default_interpolator)
-        # resolution = getattr(self, 'resolutionresolution', default_resolution)    # probably never needed.
-        # crisper = getattr(self, 'crisper', default_crisper)    # probably never needed.
-
-        # Associative operators could be set up like:
-        # cd, cn, cv, ct, xv, xt, e = [], [], [], [], [], [], []
-        # for a in self.operands:
-        #     na = a._get_numerical(precision, allowed_domain)  # a Numerical version of each operand
-        #     cd.append(na.cd)
-        #     cn.append(na.cn)
-        #     cv.append(na.cv)
-        #     ct.append(na.ct)
-        #     xv.append(na.xv)
-        #     xt.append(na.xt)
-        #     e.append(na.e)
+        N.B.: you may need to obtain attributes in your subclass.  The calls look like this:
+        n = getattr(self, 'norm', default_norm)
+        r_precision = getattr(self, 'r_precision', default_r_precision) # result precision
+        threshold = getattr(self, 'threshold', default_threshold)
+        sampling = getattr(self, 'sampling', default_sampling_method)
+        interpolator = getattr(self, 'interpolator', default_interpolator)
+        resolution = getattr(self, 'resolution', default_resolution)    # probably never needed.
+        crisper = getattr(self, 'crisper', default_crisper)    # probably never needed.
+        """
 
     def _set_attributes(self, **kwargs):
-        """Take any attribute indicated in ``kwargs``, set it, if it has not already been set, and do this for all
-        contained operands that are also operators.  I.e., the operator at the head of the tree pushes the kwargs
-        down into the tree, overriding the defaults but respecting those given in its operands.  I.e., one can use
+        """The keyword arguments, ``kwargs``, indicate how to set the object's attributes.   This method sets
+        them if they have not already been set, and do this for all contained operands that are also operators.
+        I.e., the operator at the head of the tree pushes the ``kwargs`` down into the tree, overriding the
+        module defaults but respecting those given in its operands.  I.e., one can use
         a special norm for one operator, or for part of the expression, or for the whole expression."""
         norm, r_precision, threshold, sampling, interpolator, resolution, crisper = _handle_defaults(**kwargs)
         if (norm is not None) and not hasattr(self, "norm"):
@@ -390,7 +462,7 @@ class Operator(FuzzyNumber, ABC):
         if (resolution is not None) and not hasattr(self, "resolution"):
             setattr(self, 'resolution', resolution)  # Probably never needed by an Operator.
         if (crisper is not None) and not hasattr(self, "crisper"):
-            setattr(self, 'crisper', crisper)  # Probably never needed by an Operator.
+            setattr(self, 'crisper', crisper)  # Probably never needed by an Operator.  maybe used by focus?
         if self.operands is not None:
             for a in self.operands:
                 if isinstance(a, Operator):
@@ -403,26 +475,29 @@ class Operator(FuzzyNumber, ABC):
             a._set_attributes(**kwargs)
 
     @abstractmethod
-    def _op(self, *args) -> Union[np.ndarray, float]:
-        """In each Operator class, this meth defines it.  You give it what it needs and it  gives you the result.
-        Who calls it?  _operate calls something that calls it"""
+    def _op(self, *args: Union[Norm, float, np.ndarray]) -> Union[float, np.ndarray]:
+        """In each Operator class, this method defines it.
+        E.g., in :class:`.BinAdd`, it returns ``args[0] + args[1]``.
+        In operators that require a norm, ``args[0]`` must be a :class`.Norm`.
+        Who calls it?  :meth:`_operate` calls something that calls it"""
 
+    @abstractmethod
     def d_op(self, inv: bool, *d: Domain) -> Domain:
         """Tells how a given domain will be transformed by the operation.
 
         When calling down the tree with :meth:`._get_domain`, we want to know how the operand domains will be
-        transformed into the result domain.  When calling with :meth:`._get_numerical`, we use the inverse on the
+        transformed into the resultant domain.  When calling with :meth:`._get_numerical`, we use the inverse on the
         ``allowed_domain`` to which we seek to restrict the result---and so tell the operand
         (ultimately a :class:`.Literal`) to only sample the domain that will matter---thus conserving precision.
 
-        E.g.  Suppose an operator is simple "+5"---it adds a five to everything.  It's operand has a domain of
-        d = [0,10].  We want to know the resulting domain: ``d_op(d, False)`` tells us: [5,15].  We are only interested
-        in results on a = [0,10], so when we want to do the operation by getting the numerical result, we tell the
-        operator not to sample where it won't matter to us, so it does ``d_op(a, True)`` to find that this means [-5,5].
-        Its business is then on the intersection of that and what it has: [-5,5].intersection[0,10], so it only
-        samples [0,5] of its operand to create the numerical it will return.
+        Args:
+            inv: whether we asking for the domain of the operand (``True``) or af the result (``False``).
+            d: the domains of the operands.
 
-        This idea only works for unary operators!  with binaries, the operands affect each other.
+        Returns:
+            the domain of the result of the operator (``False``), or of the operand (``True``).
+
+        Does this only work for unary ops?
         """
 
     # Here is where all the operator functions used in expressions go:
@@ -520,7 +595,6 @@ class Operator(FuzzyNumber, ABC):
         """
         return Absolute(self, **kwargs)
 
-    # TODO: passing kwargs to symbolic calls?
     def and_(self, *b: Operand, **kwargs) -> And:
         """Returns an :class:`.And` object with ``self`` and ``b`` as operands (for self ∧ b).
 
@@ -711,7 +785,7 @@ class Operator(FuzzyNumber, ABC):
         """
         return BinAdd(self, *b, **kwargs)
 
-    def add(self, *b: Operand, **kwargs) -> Operator:
+    def add(self, *b: Operand, **kwargs) -> Union[Operator, None]:
         """Returns a :class:`.BinAdd` object with ``self`` and ``b`` as operands (for self + b1 + b2 + ...).
 
         Call by:
@@ -756,7 +830,7 @@ class Operator(FuzzyNumber, ABC):
         """
         return BinMul(self, *b, **kwargs)
 
-    def mul(self, *b: Operand, **kwargs) -> Operator:
+    def mul(self, *b: Operand, **kwargs) -> Union[Operator, None]:
         """Returns a :class:`.BinMul` object with ``self`` and ``b`` as operands (for self * b).
 
         Call by:
@@ -1325,8 +1399,6 @@ class Reciprocal(MathOperator, UnaryOperator):
             d0, d1 = safe_div(1, d[0]), safe_div(1, d[1])
             return Domain.sort(d0, d1)
 
-
-
     def _op(self, v: Union[np.ndarray, float]) -> Union[np.ndarray, float]:
         r = safe_div(1, v)
         return r
@@ -1718,7 +1790,7 @@ class BinMul(MathOperator, BinaryOperator):
         # rq = r ** 2 if abs(r) < 1e100 else hwhm
         # extra = 1   # + 1 * hwhm  / (hwhm ** 2 + rq) # 10 at r=0, 1 by abs(r/rspan)>=.01
         # n = ceil(r_precision * extra)    # TODO: might need to increase when r is near 0
-        epsilon = 0 # 1e-2  # This might need to be a little larger if np.rgi gives errors.
+        epsilon = 0  # 1e-2  # This might need to be a little larger if np.rgi gives errors.
         v_span, h_span = y3 - y0, x3 - x0
         max_arclen = v_span + h_span
         if abs(r) < epsilon:  # The hyperbola is so extreme it just outlines the axes, x=0 and y=0.

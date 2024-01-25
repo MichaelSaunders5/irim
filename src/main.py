@@ -36,27 +36,24 @@ print(f"C ff {Truth.weight(b, w)}")   # make this work
 print(f"f//t {b // tw}")        # this thinks it's floor division, but it shouldn't be.
 print(f"C ft {Truth.weight(b, tw)}")
 
-print(f"ta {ta}")
-print(f"-100 {Truth.weight(ta, -100)}")
-print(f"-50 {Truth.weight(ta, -50)}")
-print(f"0 {Truth.weight(ta, 0)}")
-print(f"50 {Truth.weight(ta, 50)}")
-print(f"100 {Truth.weight(ta, 100)}")
 
 # t = Triangle(-.9,0.1,1.1, elsewhere=0, points=[(2, .8)])
-# a = Triangle(0, 2, 4, elsewhere=0)
+a = Triangle(0, 2, 4, elsewhere=0)
+b = Triangle(-2, 0, 2, elsewhere=0)
+# c = Sigmoid(">", 0, domain=(-5,5))
+# print(f">0?: -6: {c.t(-6)},  -5: {c.t(-5)},  -1: {c.t(-1)},  -.5: {c.t(-.5)},  0: {c.t(0)}, ")
+# print(f">0?: .5: {c.t(.5)},  -5: {c.t(1)},  -1: {c.t(1)},  5: {c.t(5)},  6: {c.t(6)}, ")
 
-
-# b = Triangle(-2, 0, 2, elsewhere=0)
 
 # a = Triangle(1, 2, 3)
 # b = Triangle(-1, 0, 1)
-# c = a / b
-# e = c._expression_as_numerical(.01, (-8,8))
-# e.display()
-# d = b / a
-# f = d._expression_as_numerical(.01, (-4,4))
-# f.display()
+c = a / b
+e = c._expression_as_numerical(.01, (-8,8))
+e.display(None, Domain((-8,8)))
+d = b / a
+f = d._expression_as_numerical(.01, (-4,4))
+a.display()
+f.display()
 
 # 2 * 0: some ripples about 0, but 1 at 0.
 # 0 * 2: same ripples, but dramatic divot: .93 at 0
